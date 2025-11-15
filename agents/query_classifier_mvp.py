@@ -115,9 +115,14 @@ async def classify_query(query: str) -> dict:
 
         response = await runner.run_debug(query)
 
-        # Extract the response text
-        if hasattr(response, 'content') and hasattr(response.content, 'parts'):
-            response_text = response.content.parts[0].text
+        # run_debug returns a list of Event objects
+        # Get the last event which contains the agent's response
+        if isinstance(response, list) and len(response) > 0:
+            last_event = response[-1]
+            if hasattr(last_event, 'content') and hasattr(last_event.content, 'parts'):
+                response_text = last_event.content.parts[0].text
+            else:
+                response_text = str(last_event)
         else:
             response_text = str(response)
 
