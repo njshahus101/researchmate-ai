@@ -1,0 +1,25 @@
+# Core ADK and Google AI
+google-adk[a2a]>=0.1.0
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+
+# Web scraping and content extraction
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Data processing
+pandas>=2.0.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# MCP (Model Context Protocol)
+mcp-sdk>=0.1.0
+
+# Server
+uvicorn>=0.24.0
+fastapi>=0.104.0
+
+# Utilities
+pydantic>=2.0.0

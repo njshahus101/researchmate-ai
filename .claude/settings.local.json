@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m venv:*)",
+      "Bash(venvScriptsactivate)",
+      "Bash(pip install:*)",
+      "Bash(\"venv/Scripts/pip.exe\" install --upgrade pip)",
+      "Bash(\"venv/Scripts/pip.exe\" install google-adk python-dotenv requests beautifulsoup4 lxml -q)",
+      "Bash(\"venv/Scripts/python.exe\" -c \"import google.adk; print(''✅ google-adk installed successfully'')\")",
+      "Bash(\"venv/Scripts/python.exe\" agents/query_classifier_mvp.py)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
