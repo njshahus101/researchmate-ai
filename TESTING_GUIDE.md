@@ -204,7 +204,7 @@ Click to the left of line 18 (the `classify_query` call)
 **Solution:**
 Make sure your [.env](.env) file has your API key:
 ```
-GOOGLE_API_KEY=AIzaSyCs5sC1pRZYiUM_Vlc162dKg7aMlhU7i5A
+GOOGLE_API_KEY=<<Sample Key from AI Studio>>
 ```
 
 ### Error: "Module not found"
