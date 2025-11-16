@@ -94,28 +94,116 @@ def extract_product_info(url: str) -> Dict:
     return _price_extractor.extract_product_data(url)
 
 
+def search_web(query: str, num_results: int = 5) -> Dict:
+    """
+    Search the web using Google Custom Search and return URLs.
+
+    This tool performs a Google search and returns a list of URLs that can then
+    be passed to fetch_web_content() or extract_product_info().
+
+    Args:
+        query: Search query (e.g., "Sony WH-1000XM5 Amazon")
+        num_results: Number of results to return (default: 5)
+
+    Returns:
+        Dictionary with search results:
+        {
+            "status": "success|error",
+            "query": "original search query",
+            "results": [
+                {
+                    "title": "Result title",
+                    "url": "https://example.com/...",
+                    "snippet": "Brief description..."
+                },
+                ...
+            ],
+            "urls": ["https://url1.com", "https://url2.com", ...],
+            "error_message": "..." (if error)
+        }
+
+    Example:
+        result = search_web("Sony WH-1000XM5 Amazon price")
+        if result["status"] == "success":
+            # Get the first Amazon URL
+            amazon_urls = [url for url in result["urls"] if "amazon.com" in url]
+            if amazon_urls:
+                product_info = extract_product_info(amazon_urls[0])
+    """
+    import requests
+    import os
+
+    # Get API keys from environment
+    google_api_key = os.getenv("GOOGLE_API_KEY")
+    search_engine_id = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
+
+    # If no custom search configured, return helpful message
+    if not search_engine_id:
+        return {
+            "status": "info",
+            "query": query,
+            "message": "Google Custom Search not configured. Using Google Search grounding instead.",
+            "suggestion": f"Search for: '{query}' and use the URLs from grounding results",
+            "results": [],
+            "urls": []
+        }
+
+    try:
+        # Google Custom Search API
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            "key": google_api_key,
+            "cx": search_engine_id,
+            "q": query,
+            "num": min(num_results, 10)  # Max 10 per request
+        }
+
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+
+        results = []
+        urls = []
+
+        for item in data.get("items", []):
+            result = {
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "snippet": item.get("snippet", "")
+            }
+            results.append(result)
+            urls.append(result["url"])
+
+        return {
+            "status": "success",
+            "query": query,
+            "results": results,
+            "urls": urls,
+            "count": len(results)
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "query": query,
+            "error_message": f"Search failed: {str(e)}",
+            "results": [],
+            "urls": []
+        }
+
+
 # For backward compatibility
 def search_and_fetch(query: str, num_results: int = 3) -> Dict:
     """
-    Note: For actual web search, use Google Search grounding in Gemini.
-    This is a placeholder that suggests using the built-in search capabilities.
-
-    Args:
-        query: Search query string
-        num_results: Number of results desired
-
-    Returns:
-        Information message about using Google Search
+    Deprecated: Use search_web() instead.
     """
-    return {
-        "status": "info",
-        "message": "Use Gemini's Google Search grounding feature for web search, then use fetch_web_content() or extract_product_info() on specific URLs",
-        "suggestion": f"Search query: '{query}', then fetch top {num_results} results"
-    }
+    return search_web(query, num_results)
 
 
 __all__ = [
+    "search_web",
     "fetch_web_content",
     "extract_product_info",
-    "search_and_fetch",
+    "search_and_fetch",  # Deprecated, kept for compatibility
 ]
