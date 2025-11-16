@@ -2,39 +2,88 @@
 Query Classification Agent - MVP Implementation
 
 This is a minimal viable product version that actually works with the LLM.
+Includes integration with Memory Service for user context.
 """
 
 import os
 import json
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from services.memory_service import MemoryService
 
-def create_query_classifier_mvp(retry_config: types.HttpRetryOptions) -> LlmAgent:
+
+def create_memory_retrieval_tool(memory_service: MemoryService, user_id: str):
     """
-    Creates a working MVP Query Classification Agent.
+    Creates a memory retrieval tool for the agent.
+
+    Args:
+        memory_service: Memory service instance
+        user_id: User identifier
+
+    Returns:
+        Tool function that can be called by the agent
+    """
+    def get_user_context(query_topics: list = None) -> dict:
+        """
+        Retrieves user context from memory.
+
+        Args:
+            query_topics: Optional list of topics to find related context
+
+        Returns:
+            User context including preferences, history, and domain knowledge
+        """
+        user_memory = memory_service.get_user_memory(user_id)
+
+        context = {
+            "preferences": user_memory.get("preferences", {}),
+            "recent_research": memory_service.get_recent_research(user_id, limit=5),
+            "domain_knowledge": user_memory.get("domain_knowledge", {})
+        }
+
+        # Add related topics if query topics are provided
+        if query_topics:
+            related_topics = []
+            for topic in query_topics:
+                related = memory_service.get_related_topics(user_id, topic)
+                related_topics.extend(related)
+            context["related_topics"] = list(set(related_topics))
+
+        return context
+
+    return get_user_context
+
+
+def create_query_classifier_mvp(retry_config: types.HttpRetryOptions, memory_service: MemoryService = None, user_id: str = "default_user") -> LlmAgent:
+    """
+    Creates a working MVP Query Classification Agent with Memory Service integration.
 
     This agent:
     - Analyzes user queries
     - Determines query type (factual, comparative, exploratory, monitoring)
     - Suggests research strategy
     - Extracts key topics
+    - Retrieves user context from memory for personalized classification
 
     Args:
         retry_config: HTTP retry configuration
+        memory_service: Optional Memory Service instance for user context
+        user_id: User identifier for memory retrieval
 
     Returns:
         Configured LlmAgent
     """
 
-    agent = LlmAgent(
-        name="query_classifier_mvp",
-        model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-        description="Intelligent query analyzer that determines research strategy",
-        instruction="""You are the Query Classification Agent for ResearchMate AI.
+    # Build instruction with memory context awareness
+    instruction = """You are the Query Classification Agent for ResearchMate AI.
 
 Your job is to analyze user queries and provide a structured classification.
 
@@ -53,6 +102,23 @@ Suggest a research strategy:
 - quick-answer: Single search, immediate response
 - multi-source: 3-5 sources, structured analysis
 - deep-dive: 5-10+ sources, comprehensive research
+"""
+
+    # Add memory context instructions if memory service is available
+    if memory_service:
+        instruction += """
+
+USER CONTEXT AWARENESS:
+You have access to user preferences, research history, and domain knowledge.
+Consider this context when classifying queries to provide personalized recommendations.
+
+For example:
+- If user has researched similar topics before, acknowledge their existing knowledge
+- If user has domain expertise, adjust complexity assessment accordingly
+- If user has specific preferences, factor them into the research strategy
+"""
+
+    instruction += """
 
 IMPORTANT: Always respond with valid JSON in this exact format:
 {
@@ -66,19 +132,27 @@ IMPORTANT: Always respond with valid JSON in this exact format:
 }
 
 Only output valid JSON, no additional text before or after.
-""",
-        tools=[],
+"""
+
+    agent = LlmAgent(
+        name="query_classifier_mvp",
+        model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+        description="Intelligent query analyzer that determines research strategy with user context awareness",
+        instruction=instruction,
+        tools=[],  # Tools will be added in future versions
     )
 
     return agent
 
 
-async def classify_query(query: str) -> dict:
+async def classify_query(query: str, user_id: str = "default_user", memory_service: MemoryService = None) -> dict:
     """
-    Classify a single query using the MVP agent.
+    Classify a single query using the MVP agent with user context.
 
     Args:
         query: User's research query
+        user_id: User identifier for memory retrieval
+        memory_service: Optional Memory Service instance
 
     Returns:
         Classification results as dictionary
@@ -101,19 +175,38 @@ async def classify_query(query: str) -> dict:
         http_status_codes=[429, 500, 503, 504],
     )
 
-    # Create agent
-    agent = create_query_classifier_mvp(retry_config)
+    # Create agent with memory service
+    agent = create_query_classifier_mvp(retry_config, memory_service, user_id)
 
     # Create runner
     runner = InMemoryRunner(agent=agent)
+
+    # Get user context if memory service is available
+    user_context_str = ""
+    if memory_service:
+        user_memory = memory_service.get_user_memory(user_id)
+        recent_research = memory_service.get_recent_research(user_id, limit=3)
+
+        user_context_str = "\n\nUser Context:"
+        if user_memory.get("preferences"):
+            user_context_str += f"\nPreferences: {json.dumps(user_memory['preferences'], indent=2)}"
+        if recent_research:
+            user_context_str += f"\nRecent Research: {json.dumps(recent_research, indent=2)}"
+        if user_memory.get("domain_knowledge"):
+            user_context_str += f"\nDomain Knowledge: {json.dumps(user_memory['domain_knowledge'], indent=2)}"
 
     try:
         # Run the query
         print(f"\n{'='*60}")
         print(f"Classifying Query: {query}")
+        if user_context_str:
+            print(f"User ID: {user_id}")
         print(f"{'='*60}\n")
 
-        response = await runner.run_debug(query)
+        # Combine query with user context
+        query_with_context = query + user_context_str if user_context_str else query
+
+        response = await runner.run_debug(query_with_context)
 
         # run_debug returns a list of Event objects
         # Get the last event which contains the agent's response
@@ -153,6 +246,16 @@ async def classify_query(query: str) -> dict:
             print(f"Sources Needed: {classification.get('estimated_sources', 'N/A')}")
             print(f"\nReasoning: {classification.get('reasoning', 'N/A')}")
             print(f"{'='*60}\n")
+
+            # Store in memory if memory service is available
+            if memory_service:
+                memory_service.add_research_entry(
+                    user_id,
+                    query,
+                    classification.get('query_type', 'unknown'),
+                    classification.get('key_topics', [])
+                )
+                print(f"[+] Stored classification in memory for user: {user_id}\n")
 
             return classification
 
