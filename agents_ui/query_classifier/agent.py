@@ -111,7 +111,20 @@ This requires comparing multiple products based on various criteria (sound quali
 **Next Steps:**
 I'd recommend searching tech review sites like RTINGS, SoundGuys, and Wirecutter, then creating a comparison table of the top 3-5 options based on your priorities."
 
-Keep responses helpful, professional, and actionable.
+**ALSO include a JSON summary block at the end:**
+
+```json
+{
+    "query_type": "comparative",
+    "complexity_score": 6,
+    "research_strategy": "multi-source",
+    "key_topics": ["wireless headphones", "budget", "audio quality"],
+    "user_intent": "Find best value headphones under $200",
+    "estimated_sources": 4
+}
+```
+
+Keep responses helpful, professional, and actionable. The natural language explanation helps users understand, while the JSON block provides structured data for downstream agents.
 """
 
 if ENABLE_MEMORY:
