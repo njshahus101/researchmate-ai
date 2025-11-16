@@ -34,6 +34,9 @@ from services.memory_service import MemoryService
 from utils.logging_config import setup_logging, AgentLogger
 from utils.helpers import create_retry_config
 
+# Import research tools
+from tools.research_tools import fetch_web_content, extract_product_info
+
 
 def create_orchestrator_agent(
     retry_config: types.HttpRetryOptions,
@@ -284,13 +287,18 @@ class ResearchMateAI:
         )
         self.logger.info(f"  [OK] {self.query_classifier.name}")
 
-        # 2. Information Gatherer Agent
+        # 2. Information Gatherer Agent with web fetching tools
+        fetch_tool = FunctionTool(func=fetch_web_content)
+        product_tool = FunctionTool(func=extract_product_info)
+
         self.information_gatherer = create_information_gatherer_agent(
             self.retry_config,
-            web_fetcher_tool=None,  # Will add MCP tools later
-            price_extractor_tool=None
+            web_fetcher_tool=fetch_tool,
+            price_extractor_tool=product_tool
         )
         self.logger.info(f"  [OK] {self.information_gatherer.name}")
+        self.logger.info("    - Web fetching tool enabled")
+        self.logger.info("    - Product extraction tool enabled")
 
         # 3. Orchestrator Agent - pass sub-agents
         self.orchestrator = create_orchestrator_agent(
