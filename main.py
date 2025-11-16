@@ -61,7 +61,7 @@ def create_orchestrator_agent(
     """
 
     # Create tool functions that wrap agent calls (A2A Protocol)
-    def classify_user_query(query: str, user_id: str = "default") -> dict:
+    async def classify_user_query(query: str, user_id: str = "default") -> dict:
         """
         Classify a user query to determine research strategy.
 
@@ -88,9 +88,8 @@ def create_orchestrator_agent(
 
         # Call classifier agent via runner (A2A)
         runner = InMemoryRunner(agent=classifier_agent)
-        import asyncio
         try:
-            response = asyncio.run(runner.run_debug(query + context))
+            response = await runner.run_debug(query + context)
 
             # Extract response
             if isinstance(response, list) and len(response) > 0:
@@ -132,7 +131,7 @@ def create_orchestrator_agent(
                 "complexity_score": 5
             }
 
-    def gather_information(query: str, classification: dict) -> dict:
+    async def gather_information(query: str, classification: dict) -> dict:
         """
         Gather information from multiple sources based on research strategy.
 
@@ -159,9 +158,8 @@ Provide sources with URLs, titles, and key findings."""
 
         # Call gatherer agent via runner (A2A)
         runner = InMemoryRunner(agent=gatherer_agent)
-        import asyncio
         try:
-            response = asyncio.run(runner.run_debug(gatherer_prompt))
+            response = await runner.run_debug(gatherer_prompt)
 
             # Extract response
             if isinstance(response, list) and len(response) > 0:
@@ -605,6 +603,21 @@ Please gather information according to the {research_strategy} strategy."""
         print(help_text)
 
 
+# Create module-level app instance for ADK UI
+# This allows 'adk web main:app' to work
+_researchmate_instance = None
+
+def get_app():
+    """Get or create the ResearchMate AI application instance."""
+    global _researchmate_instance
+    if _researchmate_instance is None:
+        _researchmate_instance = ResearchMateAI()
+    return _researchmate_instance.app
+
+# Expose app at module level for ADK UI
+app = get_app()
+
+
 def main():
     """Main entry point for interactive mode."""
     # Check for API key
@@ -615,10 +628,10 @@ def main():
         return
 
     # Create application
-    app = ResearchMateAI()
+    researchmate = ResearchMateAI()
 
     # Run in interactive mode
-    app.run_interactive()
+    researchmate.run_interactive()
 
 
 async def test_pipeline():
