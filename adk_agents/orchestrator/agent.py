@@ -7,6 +7,7 @@ This agent coordinates the research pipeline using a DETERMINISTIC FIXED PIPELIN
 3. ALWAYS calls extract/fetch tools on the URLs
 4. ALWAYS calls Information Gatherer to format results
 5. ALWAYS calls Content Analysis agent to assess credibility and extract facts
+6. ALWAYS calls Report Generator agent to create final tailored report
 
 This eliminates the unpredictability of LLM-based tool calling by using
 a fixed sequence of steps executed by Python code.
@@ -62,6 +63,10 @@ from adk_agents.information_gatherer.agent import agent as gatherer_agent
 print("  Loading Content Analysis agent...")
 sys.path.insert(0, str(Path(__file__).parent.parent / 'content_analyzer'))
 from adk_agents.content_analyzer.agent import agent as analyzer_agent
+
+print("  Loading Report Generator agent...")
+sys.path.insert(0, str(Path(__file__).parent.parent / 'report_generator'))
+from adk_agents.report_generator.agent import agent as report_generator_agent
 
 # Initialize memory service (simplified version for ADK UI)
 class SimpleMemoryService:
@@ -270,6 +275,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     STEP 3: Extract data from URLs
     STEP 4: Format results
     STEP 5: Analyze content credibility and extract facts
+    STEP 6: Generate tailored report with citations and follow-up questions
 
     Args:
         query: The user's research query
@@ -277,7 +283,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
         interactive: If True, asks user for clarifications after classification
 
     Returns:
-        Dictionary with complete research results including credibility analysis
+        Dictionary with complete research results including final report
     """
     print(f"\n{'='*60}")
     print(f"FIXED PIPELINE EXECUTION")
@@ -287,11 +293,11 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     # ============================================================
     # STEP 1: ALWAYS CLASSIFY QUERY
     # ============================================================
-    print(f"\n[STEP 1/5] Classifying query...")
+    print(f"\n[STEP 1/6] Classifying query...")
     classification = await classify_user_query(query, user_id)
 
     if classification.get('error'):
-        print(f"[STEP 1/5] X Classification failed: {classification['error']}")
+        print(f"[STEP 1/6] X Classification failed: {classification['error']}")
         # Use defaults if classification fails
         classification = {
             "query_type": "factual",
@@ -300,7 +306,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
             "key_topics": []
         }
     else:
-        print(f"[STEP 1/5] OK Classification complete")
+        print(f"[STEP 1/6] OK Classification complete")
         print(f"  Type: {classification.get('query_type')}")
         print(f"  Strategy: {classification.get('research_strategy')}")
         print(f"  Complexity: {classification.get('complexity_score')}/10")
@@ -322,7 +328,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     # ============================================================
     # STEP 2: SMART SEARCH STRATEGY (Google Shopping API or Web Search)
     # ============================================================
-    print(f"\n[STEP 2/5] Determining search strategy...")
+    print(f"\n[STEP 2/6] Determining search strategy...")
 
     # Check if this is a product price query - use Google Shopping API
     query_type = classification.get('query_type', '').lower()
@@ -333,43 +339,43 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     search_result = {'status': 'pending', 'urls': []}
 
     if is_price_query:
-        print(f"[STEP 2/5] Detected price query - using Google Shopping API...")
+        print(f"[STEP 2/6] Detected price query - using Google Shopping API...")
         shopping_result = search_google_shopping(query, num_results=5)
 
         if shopping_result.get('status') == 'success':
-            print(f"[STEP 2/5] OK Google Shopping API returned {shopping_result.get('num_results', 0)} results")
+            print(f"[STEP 2/6] OK Google Shopping API returned {shopping_result.get('num_results', 0)} results")
             google_shopping_data = shopping_result.get('results', [])
 
             # Also do regular web search as backup
-            print(f"[STEP 2/5] Also searching web for additional sources...")
+            print(f"[STEP 2/6] Also searching web for additional sources...")
             search_result = search_web(query, num_results=3)
         else:
             error_msg = shopping_result.get('error_message', 'Unknown error')
-            print(f"[STEP 2/5] WARN Google Shopping API failed: {error_msg}")
-            print(f"[STEP 2/5] Falling back to web search...")
+            print(f"[STEP 2/6] WARN Google Shopping API failed: {error_msg}")
+            print(f"[STEP 2/6] Falling back to web search...")
             search_result = search_web(query, num_results=5)
     else:
-        print(f"[STEP 2/5] Using web search for general query...")
+        print(f"[STEP 2/6] Using web search for general query...")
         search_result = search_web(query, num_results=5)
 
     if search_result.get('status') == 'success' and search_result.get('urls'):
-        print(f"[STEP 2/5] OK Found {len(search_result['urls'])} URLs")
+        print(f"[STEP 2/6] OK Found {len(search_result['urls'])} URLs")
     else:
         if not google_shopping_data:  # Only warn if we don't have shopping data
-            print(f"[STEP 2/5] WARN Search returned no URLs (status: {search_result.get('status')})")
+            print(f"[STEP 2/6] WARN Search returned no URLs (status: {search_result.get('status')})")
             error_msg = search_result.get('error_message') or search_result.get('message', 'Unknown error')
             print(f"  Message: {error_msg}")
 
     # ============================================================
     # STEP 3: FETCH DATA (Google Shopping + URLs)
     # ============================================================
-    print(f"\n[STEP 3/5] Fetching data from sources...")
+    print(f"\n[STEP 3/6] Fetching data from sources...")
     fetched_data = []
     failed_urls = []
 
     # First, add Google Shopping results if we have them
     if google_shopping_data:
-        print(f"[STEP 3/5] Adding {len(google_shopping_data)} Google Shopping results...")
+        print(f"[STEP 3/6] Adding {len(google_shopping_data)} Google Shopping results...")
         for i, shopping_item in enumerate(google_shopping_data, 1):
             fetched_data.append({
                 'url': shopping_item.get('link', f'google_shopping_result_{i}'),
@@ -385,7 +391,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
                 },
                 'source': {'title': shopping_item.get('seller', 'Google Shopping')}
             })
-        print(f"[STEP 3/5] OK Added {len(google_shopping_data)} Google Shopping results")
+        print(f"[STEP 3/6] OK Added {len(google_shopping_data)} Google Shopping results")
 
     urls = search_result.get('urls', [])
     # Try more URLs but limit fetched data to best 3
@@ -440,9 +446,9 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
 
     # Report results
     if fetched_data:
-        print(f"[STEP 3/5] OK Fetched data from {len(fetched_data)} sources")
+        print(f"[STEP 3/6] OK Fetched data from {len(fetched_data)} sources")
     else:
-        print(f"[STEP 3/5] WARN No data fetched from any source")
+        print(f"[STEP 3/6] WARN No data fetched from any source")
         if failed_urls:
             print(f"  Failed URLs ({len(failed_urls)}):")
             for url, error in failed_urls[:3]:  # Show first 3
@@ -451,7 +457,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     # ============================================================
     # STEP 4: ALWAYS FORMAT RESULTS
     # ============================================================
-    print(f"\n[STEP 4/5] Formatting results with Information Gatherer...")
+    print(f"\n[STEP 4/6] Formatting results with Information Gatherer...")
 
     # Build prompt with fetched data and helpful context
     if fetched_data:
@@ -524,12 +530,12 @@ I'm ready to help with a refined search when you're ready!\"
         else:
             response_text = str(response)
 
-        print(f"[STEP 4/5] OK Formatting complete")
+        print(f"[STEP 4/6] OK Formatting complete")
 
         # ============================================================
         # STEP 5: ALWAYS ANALYZE CONTENT FOR CREDIBILITY
         # ============================================================
-        print(f"\n[STEP 5/5] Analyzing content credibility and extracting facts...")
+        print(f"\n[STEP 5/6] Analyzing content credibility and extracting facts...")
 
         # Only perform analysis if we have fetched data
         if fetched_data:
@@ -581,21 +587,21 @@ Return comprehensive analysis in JSON format as specified in your instructions."
 
                 try:
                     analysis_json = json.loads(cleaned_analysis)
-                    print(f"[STEP 5/5] OK Analysis complete - {analysis_json.get('analysis_summary', {}).get('credible_sources', 0)} credible sources found")
+                    print(f"[STEP 5/6] OK Analysis complete - {analysis_json.get('analysis_summary', {}).get('credible_sources', 0)} credible sources found")
                 except json.JSONDecodeError:
                     # If JSON parsing fails, use text as-is
                     analysis_json = {"raw_analysis": cleaned_analysis}
-                    print(f"[STEP 5/5] OK Analysis complete (raw text format)")
+                    print(f"[STEP 5/6] OK Analysis complete (raw text format)")
 
             except Exception as e:
-                print(f"[STEP 5/5] WARN Analysis failed: {e}")
+                print(f"[STEP 5/6] WARN Analysis failed: {e}")
                 analysis_json = {
                     "error": str(e),
                     "analysis_summary": {"note": "Content analysis failed, using unanalyzed data"}
                 }
 
         else:
-            print(f"[STEP 5/5] SKIP No data to analyze (no sources fetched)")
+            print(f"[STEP 5/6] SKIP No data to analyze (no sources fetched)")
             analysis_json = {
                 "analysis_summary": {
                     "total_sources": 0,
@@ -604,27 +610,92 @@ Return comprehensive analysis in JSON format as specified in your instructions."
                 }
             }
 
+        # ============================================================
+        # STEP 6: ALWAYS GENERATE FINAL REPORT
+        # ============================================================
+        print(f"\n[STEP 6/6] Generating final report with Report Generator...")
+
+        # Build comprehensive prompt for Report Generator
+        report_prompt = f"""Generate a tailored report for the user.
+
+QUERY: {query}
+
+CLASSIFICATION:
+- Type: {classification.get('query_type')}
+- Strategy: {classification.get('research_strategy')}
+- Complexity: {classification.get('complexity_score')}/10
+- Key Topics: {', '.join(classification.get('key_topics', []))}
+
+FORMATTED INFORMATION (from Information Gatherer):
+{response_text}
+
+CONTENT ANALYSIS (credibility scores and extracted facts):
+{json.dumps(analysis_json, indent=2)}
+
+YOUR TASK:
+Generate a professional report following the format for query type: {classification.get('query_type')}
+
+Requirements:
+1. Use the appropriate report format (factual/comparative/exploratory)
+2. Include all citations with credibility indicators
+3. Apply weighted scoring if user stated priorities in query
+4. Generate 3-5 relevant follow-up questions
+5. Use professional markdown formatting
+6. Ensure all claims are cited from the content analysis
+7. Highlight any conflicts between sources transparently
+
+Remember: You are the final voice to the user. Transform this data into actionable insights!"""
+
+        # Call Report Generator agent
+        print(f"[A2A] Calling Report Generator agent...")
+        report_runner = InMemoryRunner(agent=report_generator_agent)
+        try:
+            report_response = await report_runner.run_debug(report_prompt)
+            print(f"[A2A] Report Generator response received")
+
+            # Extract report response
+            if isinstance(report_response, list) and len(report_response) > 0:
+                last_event = report_response[-1]
+                if hasattr(last_event, 'content') and hasattr(last_event.content, 'parts'):
+                    final_report = last_event.content.parts[0].text
+                else:
+                    final_report = str(last_event)
+            else:
+                final_report = str(report_response)
+
+            print(f"[STEP 6/6] OK Report generation complete")
+
+        except Exception as e:
+            print(f"[STEP 6/6] WARN Report generation failed: {e}")
+            print(f"[STEP 6/6] Falling back to Information Gatherer output")
+            # Fallback to the formatted information from Information Gatherer
+            final_report = response_text
+
         print(f"\n{'='*60}")
         print(f"PIPELINE COMPLETE")
         print(f"{'='*60}\n")
 
         return {
             "status": "success",
-            "content": response_text,
+            "content": final_report,  # Return the final report from Report Generator
             "classification": classification,
             "sources_fetched": len(fetched_data),
             "content_analysis": analysis_json,
+            "intermediate_outputs": {
+                "information_gatherer": response_text,  # Keep for debugging
+            },
             "pipeline_steps": {
                 "classification": "OK Complete",
                 "search": f"OK Found {len(urls)} URLs",
                 "fetch": f"OK Fetched {len(fetched_data)} sources",
                 "format": "OK Complete",
-                "analysis": "OK Complete" if fetched_data else "SKIP No data"
+                "analysis": "OK Complete" if fetched_data else "SKIP No data",
+                "report": "OK Complete"
             }
         }
 
     except Exception as e:
-        print(f"[STEP 4/5] X Formatting failed: {e}")
+        print(f"[STEP 4/6] X Formatting failed: {e}")
         print(f"\n{'='*60}")
         print(f"PIPELINE FAILED AT FORMATTING STEP")
         print(f"{'='*60}\n")
@@ -640,7 +711,8 @@ Return comprehensive analysis in JSON format as specified in your instructions."
                 "search": f"OK Found {len(search_result.get('urls', []))} URLs",
                 "fetch": f"OK Fetched {len(fetched_data)} sources",
                 "format": f"FAILED: {str(e)}",
-                "analysis": "SKIP (formatting failed)"
+                "analysis": "SKIP (formatting failed)",
+                "report": "SKIP (formatting failed)"
             }
         }
 
@@ -663,8 +735,9 @@ The fixed pipeline will AUTOMATICALLY execute all research steps in order:
 3. Fetch data from URLs
 4. Format results
 5. Analyze content credibility and extract facts
+6. Generate final tailored report with citations and follow-up questions
 
-You do NOT need to make any decisions. Just call the pipeline and present the results.
+You do NOT need to make any decisions. Just call the pipeline and return the results.
 
 Example:
 User: "Fetch current price of Sony WH-1000XM5"
@@ -672,7 +745,22 @@ User: "Fetch current price of Sony WH-1000XM5"
 You should immediately call:
 execute_fixed_pipeline(query="Fetch current price of Sony WH-1000XM5", user_id="default")
 
-Then present the returned results to the user."""
+CRITICAL: Return the pipeline's 'content' field EXACTLY as-is. DO NOT:
+- Reformat or restructure the content
+- Summarize or shorten the content
+- Add your own commentary or introduction
+- Remove any sections (especially Sources or Follow-up Questions)
+- Change the markdown formatting
+
+The pipeline already created a perfectly formatted report. Your ONLY job is to pass it through unchanged.
+
+If the pipeline returns:
+{
+  "status": "success",
+  "content": "## Best Wireless Headphones\\n\\nThe Sony WH-1000XM5...\\n\\n### Sources\\n[1] Amazon..."
+}
+
+You must output ONLY the exact content value with NO modifications."""
 
 agent = LlmAgent(
     name="research_orchestrator",
@@ -686,7 +774,8 @@ print(f"Agent '{agent.name}' initialized successfully with FIXED PIPELINE")
 print("  - Query Classifier agent loaded")
 print("  - Information Gatherer agent loaded")
 print("  - Content Analysis agent loaded")
-print("  - Fixed pipeline: Classify -> Search -> Fetch -> Format -> Analyze")
+print("  - Report Generator agent loaded")
+print("  - Fixed pipeline: Classify -> Search -> Fetch -> Format -> Analyze -> Report")
 print("  - No LLM decision-making - deterministic execution")
 print("Ready for ADK Web UI")
 
