@@ -258,7 +258,7 @@ Type additional details or press Enter to continue with current query.
     return clarification
 
 
-async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = False) -> dict:
+async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = True) -> dict:
     """
     FIXED PIPELINE: Executes research in a deterministic order.
 
