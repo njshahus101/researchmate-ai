@@ -7,6 +7,7 @@ Specializes in finding prices, specifications, and product details for compariso
 Enhanced Features:
 - JSON-LD schema.org extraction
 - Amazon-specific parsing
+- Google Shopping API integration (SerpApi)
 - Multiple price formats (regular, sale, discount)
 - Product images
 - Enhanced error handling
@@ -16,6 +17,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import json
+import os
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
 
@@ -32,16 +34,32 @@ class PriceExtractorServer:
     - Return structured JSON data
     """
 
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: int = 10, serpapi_key: Optional[str] = None):
         """
         Initialize the Price Extractor.
 
         Args:
             timeout: Request timeout in seconds
+            serpapi_key: SerpApi API key for Google Shopping searches (optional)
         """
         self.timeout = timeout
+        self.serpapi_key = serpapi_key or os.getenv('SERPAPI_KEY')
+
+        # Enhanced headers to better mimic real browser and avoid bot detection
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Referer': 'https://www.google.com/',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
         }
 
         # Currency patterns
@@ -141,6 +159,14 @@ class PriceExtractorServer:
         """Check if URL is an Amazon product page."""
         return 'amazon.com' in url or 'amazon.' in urlparse(url).netloc
 
+    def _is_bestbuy_url(self, url: str) -> bool:
+        """Check if URL is a Best Buy product page."""
+        return 'bestbuy.com' in url.lower()
+
+    def _is_walmart_url(self, url: str) -> bool:
+        """Check if URL is a Walmart product page."""
+        return 'walmart.com' in url.lower()
+
     def _extract_amazon_specific(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Amazon-specific extraction using known selectors."""
         data = {}
@@ -215,6 +241,252 @@ class PriceExtractorServer:
 
         return data
 
+    def _extract_bestbuy_specific(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        """Best Buy-specific extraction using known selectors."""
+        data = {}
+
+        # Best Buy product title
+        title_elem = soup.find('h1', class_=re.compile(r'heading|title', re.I))
+        if not title_elem:
+            title_elem = soup.find('h1')
+        if title_elem:
+            data['name'] = title_elem.get_text().strip()
+
+        # Best Buy price - multiple selectors
+        price_selectors = [
+            ('div', {'class': re.compile(r'priceView.*currentPrice', re.I)}),
+            ('div', {'data-testid': 'customer-price'}),
+            ('span', {'class': re.compile(r'priceView', re.I)}),
+        ]
+
+        for tag, attrs in price_selectors:
+            price_elem = soup.find(tag, attrs)
+            if price_elem:
+                price_text = price_elem.get_text().strip()
+                # Extract price using regex
+                price_match = re.search(r'\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)', price_text)
+                if price_match:
+                    data['price'] = f"${price_match.group(1)}"
+                    data['currency'] = 'USD'
+                    break
+
+        # Rating
+        rating_elem = soup.find('div', class_=re.compile(r'rating|stars', re.I))
+        if not rating_elem:
+            rating_elem = soup.find('span', {'aria-label': re.compile(r'rating', re.I)})
+        if rating_elem:
+            rating_text = rating_elem.get_text()
+            rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+            if rating_match:
+                data['rating'] = float(rating_match.group(1))
+
+        # Review count
+        review_elem = soup.find('span', class_=re.compile(r'review.*count', re.I))
+        if not review_elem:
+            review_elem = soup.find('span', string=re.compile(r'\d+\s*reviews?', re.I))
+        if review_elem:
+            review_text = review_elem.get_text()
+            review_match = re.search(r'(\d+(?:,\d{3})*)', review_text)
+            if review_match:
+                data['review_count'] = int(review_match.group(1).replace(',', ''))
+
+        # Availability - Best Buy specific
+        avail_elem = soup.find('button', class_=re.compile(r'add.*cart|fulfillment', re.I))
+        if not avail_elem:
+            avail_elem = soup.find('div', class_=re.compile(r'fulfillment|availability', re.I))
+        if avail_elem:
+            avail_text = avail_elem.get_text().lower()
+            if 'add to cart' in avail_text or 'available' in avail_text:
+                data['availability'] = 'In Stock'
+            elif 'sold out' in avail_text or 'unavailable' in avail_text:
+                data['availability'] = 'Out of Stock'
+
+        # Features
+        features = []
+        feature_list = soup.find('ul', class_=re.compile(r'feature|spec|highlight', re.I))
+        if feature_list:
+            for li in feature_list.find_all('li')[:10]:
+                feature_text = li.get_text().strip()
+                if feature_text and len(feature_text) > 10:
+                    features.append(feature_text)
+        if features:
+            data['features'] = features
+
+        return data
+
+    def _extract_walmart_specific(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        """Walmart-specific extraction using known selectors."""
+        data = {}
+
+        # Walmart product title
+        title_elem = soup.find('h1', itemprop='name')
+        if not title_elem:
+            title_elem = soup.find('h1')
+        if title_elem:
+            data['name'] = title_elem.get_text().strip()
+
+        # Walmart price - multiple possible locations
+        price_selectors = [
+            ('span', {'itemprop': 'price'}),
+            ('span', {'class': re.compile(r'price.*display', re.I)}),
+            ('div', {'data-automation-id': 'product-price'}),
+        ]
+
+        for tag, attrs in price_selectors:
+            price_elem = soup.find(tag, attrs)
+            if price_elem:
+                price_text = price_elem.get_text().strip()
+                price_match = re.search(r'\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)', price_text)
+                if price_match:
+                    data['price'] = f"${price_match.group(1)}"
+                    data['currency'] = 'USD'
+                    break
+
+        # Rating
+        rating_elem = soup.find('span', {'itemprop': 'ratingValue'})
+        if not rating_elem:
+            rating_elem = soup.find('div', class_=re.compile(r'rating', re.I))
+        if rating_elem:
+            rating_text = rating_elem.get_text()
+            rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+            if rating_match:
+                data['rating'] = float(rating_match.group(1))
+
+        # Review count
+        review_elem = soup.find('span', {'itemprop': 'reviewCount'})
+        if not review_elem:
+            review_elem = soup.find('span', class_=re.compile(r'review.*count', re.I))
+        if review_elem:
+            review_text = review_elem.get_text()
+            review_match = re.search(r'(\d+(?:,\d{3})*)', review_text)
+            if review_match:
+                data['review_count'] = int(review_match.group(1).replace(',', ''))
+
+        # Availability
+        avail_elem = soup.find('div', {'data-automation-id': 'fulfillment-options'})
+        if not avail_elem:
+            avail_elem = soup.find('button', class_=re.compile(r'add.*cart', re.I))
+        if avail_elem:
+            avail_text = avail_elem.get_text().lower()
+            if 'add to cart' in avail_text or 'available' in avail_text:
+                data['availability'] = 'In Stock'
+            elif 'out of stock' in avail_text or 'unavailable' in avail_text:
+                data['availability'] = 'Out of Stock'
+
+        # Features
+        features = []
+        feature_section = soup.find('div', {'data-automation-id': 'product-highlights'})
+        if not feature_section:
+            feature_section = soup.find('ul', class_=re.compile(r'feature|spec', re.I))
+        if feature_section:
+            for li in feature_section.find_all('li')[:10]:
+                feature_text = li.get_text().strip()
+                if feature_text and len(feature_text) > 10:
+                    features.append(feature_text)
+        if features:
+            data['features'] = features
+
+        return data
+
+    def search_google_shopping(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search Google Shopping for product prices using SerpApi.
+
+        Args:
+            query: Product search query (e.g., "Sony WH-1000XM5 headphones")
+            num_results: Number of results to return (default: 5)
+
+        Returns:
+            List of product dictionaries with price, seller, rating, etc.
+        """
+        if not self.serpapi_key:
+            return [{
+                "status": "error",
+                "error_message": "SERPAPI_KEY not configured. Set SERPAPI_KEY environment variable or pass serpapi_key to constructor.",
+                "source": "google_shopping"
+            }]
+
+        try:
+            print(f"[GOOGLE_SHOPPING] Searching for: {query}")
+
+            # SerpApi Google Shopping endpoint
+            url = "https://serpapi.com/search"
+            params = {
+                "engine": "google_shopping",
+                "q": query,
+                "api_key": self.serpapi_key,
+                "num": num_results,
+                "hl": "en",
+                "gl": "us"
+            }
+
+            response = requests.get(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Extract shopping results
+            results = []
+            shopping_results = data.get('shopping_results', [])
+
+            print(f"[GOOGLE_SHOPPING] Found {len(shopping_results)} results")
+
+            for item in shopping_results[:num_results]:
+                result = {
+                    "status": "success",
+                    "source": "google_shopping",
+                    "product_name": item.get('title', ''),
+                    "price": item.get('extracted_price', item.get('price', '')),
+                    "currency": "USD",  # SerpApi normalizes to USD by default
+                    "seller": item.get('source', ''),
+                    "rating": item.get('rating'),
+                    "review_count": item.get('reviews'),
+                    "link": item.get('link', ''),
+                    "thumbnail": item.get('thumbnail', ''),
+                    "delivery": item.get('delivery', ''),
+                }
+
+                # Normalize price format
+                if result['price']:
+                    if isinstance(result['price'], (int, float)):
+                        result['price'] = f"${result['price']:.2f}"
+                    elif not str(result['price']).startswith('$'):
+                        result['price'] = f"${result['price']}"
+
+                results.append(result)
+
+            if not results:
+                print(f"[GOOGLE_SHOPPING] No results found for query: {query}")
+                return [{
+                    "status": "error",
+                    "error_message": f"No shopping results found for '{query}'",
+                    "source": "google_shopping"
+                }]
+
+            return results
+
+        except requests.Timeout:
+            return [{
+                "status": "error",
+                "error_message": "Google Shopping API request timed out",
+                "source": "google_shopping"
+            }]
+        except requests.HTTPError as e:
+            error_msg = f"Google Shopping API HTTP error: {e.response.status_code}"
+            if e.response.status_code == 401:
+                error_msg = "Invalid SERPAPI_KEY. Check your API key."
+            return [{
+                "status": "error",
+                "error_message": error_msg,
+                "source": "google_shopping"
+            }]
+        except Exception as e:
+            return [{
+                "status": "error",
+                "error_message": f"Google Shopping search failed: {str(e)}",
+                "source": "google_shopping"
+            }]
+
     def extract_product_data(self, url: str) -> Dict[str, Any]:
         """
         Extract structured product data from a URL.
@@ -276,12 +548,28 @@ class PriceExtractorServer:
                 json_ld_data = self._extract_from_json_ld(json_ld)
                 result.update(json_ld_data)
 
-            # STRATEGY 2: Site-specific extraction (for known sites like Amazon)
+            # STRATEGY 2: Site-specific extraction (for known retailers)
             if self._is_amazon_url(url):
                 print(f"[EXTRACT] Using Amazon-specific extraction...")
                 amazon_data = self._extract_amazon_specific(soup)
                 # Merge, preferring Amazon-specific data
                 for key, value in amazon_data.items():
+                    if value:  # Only update if value exists
+                        result[key] = value
+
+            elif self._is_bestbuy_url(url):
+                print(f"[EXTRACT] Using Best Buy-specific extraction...")
+                bestbuy_data = self._extract_bestbuy_specific(soup)
+                # Merge, preferring Best Buy-specific data
+                for key, value in bestbuy_data.items():
+                    if value:  # Only update if value exists
+                        result[key] = value
+
+            elif self._is_walmart_url(url):
+                print(f"[EXTRACT] Using Walmart-specific extraction...")
+                walmart_data = self._extract_walmart_specific(soup)
+                # Merge, preferring Walmart-specific data
+                for key, value in walmart_data.items():
                     if value:  # Only update if value exists
                         result[key] = value
 
