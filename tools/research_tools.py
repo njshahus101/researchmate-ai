@@ -158,7 +158,27 @@ def search_web(query: str, num_results: int = 5) -> Dict:
             "num": min(num_results, 10)  # Max 10 per request
         }
 
+        print(f"[SEARCH] Calling Google Custom Search API...")
+        print(f"[SEARCH] Query: {query}")
+        print(f"[SEARCH] Search Engine ID: {search_engine_id}")
+
         response = requests.get(url, params=params, timeout=10)
+
+        print(f"[SEARCH] Response status: {response.status_code}")
+
+        # Check for HTTP errors
+        if response.status_code != 200:
+            error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+            error_msg = error_data.get('error', {}).get('message', response.text)
+            print(f"[SEARCH] API Error: {error_msg}")
+            return {
+                "status": "error",
+                "query": query,
+                "error_message": f"Google Search API error ({response.status_code}): {error_msg}",
+                "results": [],
+                "urls": []
+            }
+
         response.raise_for_status()
 
         data = response.json()
@@ -175,6 +195,8 @@ def search_web(query: str, num_results: int = 5) -> Dict:
             results.append(result)
             urls.append(result["url"])
 
+        print(f"[SEARCH] Found {len(urls)} results")
+
         return {
             "status": "success",
             "query": query,
@@ -184,6 +206,7 @@ def search_web(query: str, num_results: int = 5) -> Dict:
         }
 
     except Exception as e:
+        print(f"[SEARCH] Exception: {type(e).__name__}: {str(e)}")
         return {
             "status": "error",
             "query": query,
