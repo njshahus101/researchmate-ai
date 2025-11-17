@@ -240,57 +240,115 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
     # STEP 2: ALWAYS SEARCH WEB
     # ============================================================
     print(f"\n[STEP 2/4] Searching web for URLs...")
-    search_result = search_web(query, num_results=3)
+
+    # Try with more results to increase success rate
+    search_result = search_web(query, num_results=5)
 
     if search_result.get('status') == 'success' and search_result.get('urls'):
         print(f"[STEP 2/4] OK Found {len(search_result['urls'])} URLs")
     else:
         print(f"[STEP 2/4] WARN Search returned no URLs (status: {search_result.get('status')})")
-        print(f"  Message: {search_result.get('message', 'Unknown error')}")
+        error_msg = search_result.get('error_message') or search_result.get('message', 'Unknown error')
+        print(f"  Message: {error_msg}")
+
+        # If search fails, try reformulating the query (query enhancement)
+        if 'error' in search_result.get('status', ''):
+            print(f"[STEP 2/4] Attempting query reformulation...")
+            # Try adding more context to the query
+            enhanced_query = f"{query} product review price"
+            print(f"  Enhanced query: {enhanced_query}")
+            search_result = search_web(enhanced_query, num_results=5)
+
+            if search_result.get('status') == 'success' and search_result.get('urls'):
+                print(f"[STEP 2/4] OK Reformulated query found {len(search_result['urls'])} URLs")
+            else:
+                print(f"[STEP 2/4] WARN Reformulated query also failed")
 
     # ============================================================
     # STEP 3: ALWAYS FETCH DATA FROM URLs
     # ============================================================
     print(f"\n[STEP 3/4] Fetching data from URLs...")
     fetched_data = []
+    failed_urls = []
 
     urls = search_result.get('urls', [])
-    for i, url in enumerate(urls[:3], 1):  # Limit to first 3 URLs
+    # Try more URLs but limit fetched data to best 3
+    for i, url in enumerate(urls[:5], 1):  # Try up to 5 URLs
         try:
             # Determine if this looks like a product page
-            is_product = any(domain in url for domain in ['amazon.com', 'ebay.com']) or \
-                        any(pattern in url for pattern in ['/product', '/dp/', '/item/'])
+            is_product = any(domain in url for domain in ['amazon.com', 'ebay.com', 'bestbuy.com']) or \
+                        any(pattern in url for pattern in ['/product', '/dp/', '/item/', '/p/'])
 
             if is_product:
-                print(f"  [{i}/{len(urls[:3])}] Extracting product: {url[:60]}...")
+                print(f"  [{i}/{min(len(urls), 5)}] Extracting product: {url[:60]}...")
                 result = extract_product_info(url)
             else:
-                print(f"  [{i}/{len(urls[:3])}] Fetching content: {url[:60]}...")
+                print(f"  [{i}/{min(len(urls), 5)}] Fetching content: {url[:60]}...")
                 result = fetch_web_content(url)
 
             if result.get('status') == 'success':
-                fetched_data.append({
-                    'url': url,
-                    'data': result,
-                    'source': search_result.get('results', [])[i-1] if i-1 < len(search_result.get('results', [])) else {}
-                })
-                print(f"  [{i}/{len(urls[:3])}] OK Success")
+                # Validate that we actually got useful data
+                has_content = False
+                if is_product:
+                    # For products, check if we got price or product name
+                    has_content = result.get('price') or result.get('product_name')
+                else:
+                    # For general content, check if we got meaningful text
+                    has_content = result.get('content') and len(result.get('content', '')) > 100
+
+                if has_content:
+                    fetched_data.append({
+                        'url': url,
+                        'data': result,
+                        'source': search_result.get('results', [])[i-1] if i-1 < len(search_result.get('results', [])) else {}
+                    })
+                    print(f"  [{i}/{min(len(urls), 5)}] OK Success (useful data)")
+
+                    # Stop if we have 3 good sources
+                    if len(fetched_data) >= 3:
+                        print(f"  [INFO] Collected 3 good sources, stopping early")
+                        break
+                else:
+                    print(f"  [{i}/{min(len(urls), 5)}] WARN Success but no useful data")
+                    failed_urls.append((url, "No useful data extracted"))
             else:
-                print(f"  [{i}/{len(urls[:3])}] X Failed: {result.get('error_message', 'Unknown error')}")
+                error_msg = result.get('error_message', 'Unknown error')
+                print(f"  [{i}/{min(len(urls), 5)}] X Failed: {error_msg}")
+                failed_urls.append((url, error_msg))
 
         except Exception as e:
-            print(f"  [{i}/{len(urls[:3])}] X Error: {e}")
+            print(f"  [{i}/{min(len(urls), 5)}] X Exception: {str(e)[:50]}...")
+            failed_urls.append((url, str(e)))
             continue
 
-    print(f"[STEP 3/4] OK Fetched data from {len(fetched_data)} sources")
+    # Report results
+    if fetched_data:
+        print(f"[STEP 3/4] OK Fetched data from {len(fetched_data)} sources")
+    else:
+        print(f"[STEP 3/4] WARN No data fetched from any source")
+        if failed_urls:
+            print(f"  Failed URLs ({len(failed_urls)}):")
+            for url, error in failed_urls[:3]:  # Show first 3
+                print(f"    - {url[:50]}... : {error[:40]}...")
 
     # ============================================================
     # STEP 4: ALWAYS FORMAT RESULTS
     # ============================================================
     print(f"\n[STEP 4/4] Formatting results with Information Gatherer...")
 
-    # Build prompt with fetched data
-    data_summary = json.dumps(fetched_data, indent=2) if fetched_data else "No data fetched"
+    # Build prompt with fetched data and helpful context
+    if fetched_data:
+        data_summary = json.dumps(fetched_data, indent=2)
+        success_message = f"Successfully fetched data from {len(fetched_data)} sources"
+    else:
+        data_summary = "No data fetched"
+        # Build helpful error context
+        error_context = []
+        if not search_result.get('urls'):
+            error_context.append("Search found no relevant URLs")
+        elif failed_urls:
+            error_context.append(f"Tried {len(failed_urls)} URLs but all failed to extract useful data")
+        success_message = "No data available. " + ". ".join(error_context)
 
     gatherer_prompt = f"""Format the following REAL-TIME FETCHED DATA into a user-friendly response.
 
@@ -300,6 +358,8 @@ Query Classification:
 - Type: {classification.get('query_type')}
 - Strategy: {classification.get('research_strategy')}
 - Complexity: {classification.get('complexity_score')}/10
+
+STATUS: {success_message}
 
 FETCHED DATA (from web):
 {data_summary}
@@ -311,7 +371,24 @@ YOUR TASK:
 - Do NOT add information beyond what's in the fetched data
 - Present it in a user-friendly way
 
-If no data was fetched, explain that search/extraction failed and suggest alternatives."""
+If no data was fetched, provide a helpful response that:
+1. Explains what went wrong (search failed, extraction failed, etc.)
+2. Suggests more specific query terms
+3. Suggests alternative approaches
+4. Remains encouraging and helpful
+
+Example helpful response when no data:
+"I attempted to research '{query}' but wasn't able to retrieve complete data. This could be because:
+- The search didn't find relevant product pages
+- Product pages were inaccessible or blocked
+
+Here's what you can try:
+- Be more specific (e.g., include brand name, model number)
+- Try a different product or query
+- Check if the product exists on major retailers like Amazon
+
+I'm ready to help with a refined search when you're ready!\"
+"""
 
     # Call Information Gatherer to format
     print(f"[A2A] Calling Information Gatherer agent to format results...")
