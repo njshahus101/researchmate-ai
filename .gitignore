@@ -77,3 +77,19 @@ docs/_build/
 # Sample files and project description (not for version control)
 sample/
 project_description*.md
+
+# Screenshots and images
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Debug test scripts
+test_multi_source_extraction.py
+test_network.py
+test_price_extraction_debug.py
+test_single_url.py
+
+# Investigation notes
+AMAZON_EXTRACTION_ISSUE.md
+PRICE_EXTRACTION_FIX_SUMMARY.md
