@@ -258,7 +258,7 @@ Type additional details or press Enter to continue with current query.
     return clarification
 
 
-async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = True) -> dict:
+async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = False) -> dict:
     """
     FIXED PIPELINE: Executes research in a deterministic order.
 
@@ -306,21 +306,18 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
         print(f"  Complexity: {classification.get('complexity_score')}/10")
 
     # ============================================================
-    # STEP 1.5: OPTIONAL INTERACTIVE CLARIFICATION
+    # STEP 1.5: CLASSIFICATION DISPLAY (NON-BLOCKING)
     # ============================================================
-    if interactive:
-        print(f"\n[CLARIFICATION] Asking for user clarification...")
-        clarification_prompt = generate_clarification_prompt(query, classification)
-        print(clarification_prompt)
+    # Always show classification to help users understand the query analysis
+    # In ADK UI, this appears as initial response before continuing with research
+    print(f"\n[INFO] Query analyzed - proceeding with research...")
 
-        # In interactive mode, wait for user input
-        # This will be handled by the ADK UI or CLI
-        return {
-            "status": "awaiting_clarification",
-            "query": query,
-            "classification": classification,
-            "clarification_prompt": clarification_prompt
-        }
+    # Store classification for later use in response
+    classification_summary = {
+        "type": classification.get('query_type'),
+        "strategy": classification.get('research_strategy'),
+        "complexity": classification.get('complexity_score')
+    }
 
     # ============================================================
     # STEP 2: SMART SEARCH STRATEGY (Google Shopping API or Web Search)
