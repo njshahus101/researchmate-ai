@@ -6,6 +6,7 @@ This agent coordinates the research pipeline using a DETERMINISTIC FIXED PIPELIN
 2. ALWAYS calls search_web() to get URLs
 3. ALWAYS calls extract/fetch tools on the URLs
 4. ALWAYS calls Information Gatherer to format results
+5. ALWAYS calls Content Analysis agent to assess credibility and extract facts
 
 This eliminates the unpredictability of LLM-based tool calling by using
 a fixed sequence of steps executed by Python code.
@@ -57,6 +58,10 @@ from adk_agents.query_classifier.agent import agent as classifier_agent
 print("  Loading Information Gatherer agent...")
 sys.path.insert(0, str(Path(__file__).parent.parent / 'information_gatherer'))
 from adk_agents.information_gatherer.agent import agent as gatherer_agent
+
+print("  Loading Content Analysis agent...")
+sys.path.insert(0, str(Path(__file__).parent.parent / 'content_analyzer'))
+from adk_agents.content_analyzer.agent import agent as analyzer_agent
 
 # Initialize memory service (simplified version for ADK UI)
 class SimpleMemoryService:
@@ -202,13 +207,14 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
     STEP 2: Search web for URLs
     STEP 3: Extract data from URLs
     STEP 4: Format results
+    STEP 5: Analyze content credibility and extract facts
 
     Args:
         query: The user's research query
         user_id: User identifier for personalization
 
     Returns:
-        Dictionary with complete research results
+        Dictionary with complete research results including credibility analysis
     """
     print(f"\n{'='*60}")
     print(f"FIXED PIPELINE EXECUTION")
@@ -407,7 +413,86 @@ I'm ready to help with a refined search when you're ready!\"
         else:
             response_text = str(response)
 
-        print(f"[STEP 4/4] OK Formatting complete")
+        print(f"[STEP 4/5] OK Formatting complete")
+
+        # ============================================================
+        # STEP 5: ALWAYS ANALYZE CONTENT FOR CREDIBILITY
+        # ============================================================
+        print(f"\n[STEP 5/5] Analyzing content credibility and extracting facts...")
+
+        # Only perform analysis if we have fetched data
+        if fetched_data:
+            # Build analysis prompt with fetched data
+            analysis_prompt = f"""Analyze the following fetched data for credibility and extract key facts.
+
+Research Query: {query}
+
+Query Type: {classification.get('query_type')}
+
+FETCHED DATA (from {len(fetched_data)} sources):
+{json.dumps(fetched_data, indent=2)}
+
+YOUR TASK:
+1. Score each source's credibility (0-100)
+2. Extract key facts with confidence levels
+3. Identify any conflicts between sources
+4. Create comparison matrix if this is a product comparison
+5. Normalize all data (prices, ratings, specifications)
+
+Return comprehensive analysis in JSON format as specified in your instructions."""
+
+            # Call Content Analysis agent
+            print(f"[A2A] Calling Content Analysis agent...")
+            analyzer_runner = InMemoryRunner(agent=analyzer_agent)
+            try:
+                analysis_response = await analyzer_runner.run_debug(analysis_prompt)
+                print(f"[A2A] Content Analysis response received")
+
+                # Extract analysis response
+                if isinstance(analysis_response, list) and len(analysis_response) > 0:
+                    last_event = analysis_response[-1]
+                    if hasattr(last_event, 'content') and hasattr(last_event.content, 'parts'):
+                        analysis_text = last_event.content.parts[0].text
+                    else:
+                        analysis_text = str(last_event)
+                else:
+                    analysis_text = str(analysis_response)
+
+                # Try to parse JSON from analysis
+                cleaned_analysis = analysis_text.strip()
+                if cleaned_analysis.startswith('```json'):
+                    cleaned_analysis = cleaned_analysis[7:]
+                if cleaned_analysis.startswith('```'):
+                    cleaned_analysis = cleaned_analysis[3:]
+                if cleaned_analysis.endswith('```'):
+                    cleaned_analysis = cleaned_analysis[:-3]
+                cleaned_analysis = cleaned_analysis.strip()
+
+                try:
+                    analysis_json = json.loads(cleaned_analysis)
+                    print(f"[STEP 5/5] OK Analysis complete - {analysis_json.get('analysis_summary', {}).get('credible_sources', 0)} credible sources found")
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, use text as-is
+                    analysis_json = {"raw_analysis": cleaned_analysis}
+                    print(f"[STEP 5/5] OK Analysis complete (raw text format)")
+
+            except Exception as e:
+                print(f"[STEP 5/5] WARN Analysis failed: {e}")
+                analysis_json = {
+                    "error": str(e),
+                    "analysis_summary": {"note": "Content analysis failed, using unanalyzed data"}
+                }
+
+        else:
+            print(f"[STEP 5/5] SKIP No data to analyze (no sources fetched)")
+            analysis_json = {
+                "analysis_summary": {
+                    "total_sources": 0,
+                    "credible_sources": 0,
+                    "note": "No sources were fetched, skipping analysis"
+                }
+            }
+
         print(f"\n{'='*60}")
         print(f"PIPELINE COMPLETE")
         print(f"{'='*60}\n")
@@ -417,18 +502,20 @@ I'm ready to help with a refined search when you're ready!\"
             "content": response_text,
             "classification": classification,
             "sources_fetched": len(fetched_data),
+            "content_analysis": analysis_json,
             "pipeline_steps": {
                 "classification": "OK Complete",
                 "search": f"OK Found {len(urls)} URLs",
                 "fetch": f"OK Fetched {len(fetched_data)} sources",
-                "format": "OK Complete"
+                "format": "OK Complete",
+                "analysis": "OK Complete" if fetched_data else "SKIP No data"
             }
         }
 
     except Exception as e:
-        print(f"[STEP 4/4] X Formatting failed: {e}")
+        print(f"[STEP 4/5] X Formatting failed: {e}")
         print(f"\n{'='*60}")
-        print(f"PIPELINE FAILED")
+        print(f"PIPELINE FAILED AT FORMATTING STEP")
         print(f"{'='*60}\n")
 
         return {
@@ -436,7 +523,14 @@ I'm ready to help with a refined search when you're ready!\"
             "error": str(e),
             "classification": classification,
             "fetched_data": fetched_data,
-            "sources_fetched": len(fetched_data)
+            "sources_fetched": len(fetched_data),
+            "pipeline_steps": {
+                "classification": "OK Complete",
+                "search": f"OK Found {len(search_result.get('urls', []))} URLs",
+                "fetch": f"OK Fetched {len(fetched_data)} sources",
+                "format": f"FAILED: {str(e)}",
+                "analysis": "SKIP (formatting failed)"
+            }
         }
 
 # Create a wrapper function that ADK can call as a tool
@@ -456,7 +550,8 @@ The fixed pipeline will AUTOMATICALLY execute all research steps in order:
 1. Classify the query
 2. Search the web
 3. Fetch data from URLs
-4. Format and return results
+4. Format results
+5. Analyze content credibility and extract facts
 
 You do NOT need to make any decisions. Just call the pipeline and present the results.
 
@@ -479,7 +574,8 @@ agent = LlmAgent(
 print(f"Agent '{agent.name}' initialized successfully with FIXED PIPELINE")
 print("  - Query Classifier agent loaded")
 print("  - Information Gatherer agent loaded")
-print("  - Fixed pipeline: Classify -> Search -> Fetch -> Format")
+print("  - Content Analysis agent loaded")
+print("  - Fixed pipeline: Classify -> Search -> Fetch -> Format -> Analyze")
 print("  - No LLM decision-making - deterministic execution")
 print("Ready for ADK Web UI")
 
