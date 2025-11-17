@@ -29,7 +29,7 @@ from google.adk.runners import InMemoryRunner
 from google.genai import types
 
 # Import research tools for FIXED PIPELINE execution
-from tools.research_tools import search_web, fetch_web_content, extract_product_info
+from tools.research_tools import search_web, fetch_web_content, extract_product_info, search_google_shopping
 
 # Load environment variables
 env_path = project_root / '.env'
@@ -243,39 +243,72 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
         print(f"  Complexity: {classification.get('complexity_score')}/10")
 
     # ============================================================
-    # STEP 2: ALWAYS SEARCH WEB
+    # STEP 2: SMART SEARCH STRATEGY (Google Shopping API or Web Search)
     # ============================================================
-    print(f"\n[STEP 2/4] Searching web for URLs...")
+    print(f"\n[STEP 2/4] Determining search strategy...")
 
-    # Try with more results to increase success rate
-    search_result = search_web(query, num_results=5)
+    # Check if this is a product price query - use Google Shopping API
+    query_type = classification.get('query_type', '').lower()
+    is_price_query = 'price' in query_type or 'product' in query_type or \
+                     any(word in query.lower() for word in ['price', 'cost', 'buy', 'purchase', 'best deal'])
+
+    google_shopping_data = []
+    search_result = {'status': 'pending', 'urls': []}
+
+    if is_price_query:
+        print(f"[STEP 2/4] Detected price query - using Google Shopping API...")
+        shopping_result = search_google_shopping(query, num_results=5)
+
+        if shopping_result.get('status') == 'success':
+            print(f"[STEP 2/4] OK Google Shopping API returned {shopping_result.get('num_results', 0)} results")
+            google_shopping_data = shopping_result.get('results', [])
+
+            # Also do regular web search as backup
+            print(f"[STEP 2/4] Also searching web for additional sources...")
+            search_result = search_web(query, num_results=3)
+        else:
+            error_msg = shopping_result.get('error_message', 'Unknown error')
+            print(f"[STEP 2/4] WARN Google Shopping API failed: {error_msg}")
+            print(f"[STEP 2/4] Falling back to web search...")
+            search_result = search_web(query, num_results=5)
+    else:
+        print(f"[STEP 2/4] Using web search for general query...")
+        search_result = search_web(query, num_results=5)
 
     if search_result.get('status') == 'success' and search_result.get('urls'):
         print(f"[STEP 2/4] OK Found {len(search_result['urls'])} URLs")
     else:
-        print(f"[STEP 2/4] WARN Search returned no URLs (status: {search_result.get('status')})")
-        error_msg = search_result.get('error_message') or search_result.get('message', 'Unknown error')
-        print(f"  Message: {error_msg}")
-
-        # If search fails, try reformulating the query (query enhancement)
-        if 'error' in search_result.get('status', ''):
-            print(f"[STEP 2/4] Attempting query reformulation...")
-            # Try adding more context to the query
-            enhanced_query = f"{query} product review price"
-            print(f"  Enhanced query: {enhanced_query}")
-            search_result = search_web(enhanced_query, num_results=5)
-
-            if search_result.get('status') == 'success' and search_result.get('urls'):
-                print(f"[STEP 2/4] OK Reformulated query found {len(search_result['urls'])} URLs")
-            else:
-                print(f"[STEP 2/4] WARN Reformulated query also failed")
+        if not google_shopping_data:  # Only warn if we don't have shopping data
+            print(f"[STEP 2/4] WARN Search returned no URLs (status: {search_result.get('status')})")
+            error_msg = search_result.get('error_message') or search_result.get('message', 'Unknown error')
+            print(f"  Message: {error_msg}")
 
     # ============================================================
-    # STEP 3: ALWAYS FETCH DATA FROM URLs
+    # STEP 3: FETCH DATA (Google Shopping + URLs)
     # ============================================================
-    print(f"\n[STEP 3/4] Fetching data from URLs...")
+    print(f"\n[STEP 3/4] Fetching data from sources...")
     fetched_data = []
     failed_urls = []
+
+    # First, add Google Shopping results if we have them
+    if google_shopping_data:
+        print(f"[STEP 3/4] Adding {len(google_shopping_data)} Google Shopping results...")
+        for i, shopping_item in enumerate(google_shopping_data, 1):
+            fetched_data.append({
+                'url': shopping_item.get('link', f'google_shopping_result_{i}'),
+                'data': {
+                    'status': 'success',
+                    'source': 'google_shopping',
+                    'product_name': shopping_item.get('product_name'),
+                    'price': shopping_item.get('price'),
+                    'seller': shopping_item.get('seller'),
+                    'rating': shopping_item.get('rating'),
+                    'review_count': shopping_item.get('review_count'),
+                    'delivery': shopping_item.get('delivery'),
+                },
+                'source': {'title': shopping_item.get('seller', 'Google Shopping')}
+            })
+        print(f"[STEP 3/4] OK Added {len(google_shopping_data)} Google Shopping results")
 
     urls = search_result.get('urls', [])
     # Try more URLs but limit fetched data to best 3
@@ -310,9 +343,10 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
                     })
                     print(f"  [{i}/{min(len(urls), 5)}] OK Success (useful data)")
 
-                    # Stop if we have 3 good sources
-                    if len(fetched_data) >= 3:
-                        print(f"  [INFO] Collected 3 good sources, stopping early")
+                    # Stop if we have enough sources (including Google Shopping results)
+                    total_sources = len(fetched_data)
+                    if total_sources >= 8:  # Allow more if we have Google Shopping
+                        print(f"  [INFO] Collected {total_sources} sources (including Google Shopping), stopping early")
                         break
                 else:
                     print(f"  [{i}/{min(len(urls), 5)}] WARN Success but no useful data")
