@@ -197,12 +197,74 @@ async def classify_user_query(query: str, user_id: str = "default") -> dict:
             "complexity_score": 5
         }
 
-async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
+async def execute_with_clarification(original_query: str, clarification: str, user_id: str = "default") -> dict:
+    """
+    Continue pipeline execution with user-provided clarification.
+
+    Args:
+        original_query: The original user query
+        clarification: Additional details/clarifications from user
+        user_id: User identifier
+
+    Returns:
+        Complete research results
+    """
+    # Merge original query with clarification
+    if clarification and clarification.strip():
+        enhanced_query = f"{original_query}\n\nAdditional context: {clarification}"
+        print(f"\n[CLARIFICATION] User provided additional details:")
+        print(f"  {clarification}")
+    else:
+        enhanced_query = original_query
+        print(f"\n[CLARIFICATION] No additional details provided, continuing with original query")
+
+    # Execute pipeline with enhanced query (non-interactive mode)
+    return await execute_fixed_pipeline(enhanced_query, user_id, interactive=False)
+
+
+def generate_clarification_prompt(query: str, classification: dict) -> str:
+    """
+    Generate a clarification prompt for the user based on query classification.
+
+    Args:
+        query: Original user query
+        classification: Classification results from Query Classifier
+
+    Returns:
+        Formatted clarification prompt
+    """
+    query_type = classification.get('query_type', 'unknown')
+    complexity = classification.get('complexity_score', 5)
+    strategy = classification.get('research_strategy', 'quick-answer')
+    key_topics = classification.get('key_topics', [])
+
+    clarification = f"""
+Query Classification Results:
+  • Type: {query_type}
+  • Research Strategy: {strategy}
+  • Complexity: {complexity}/10
+  • Key Topics: {', '.join(key_topics) if key_topics else 'Not specified'}
+
+Would you like to provide additional clarification or details to improve the research?
+
+For example:
+  - Specify time period (e.g., "current prices" vs "historical data")
+  - Add constraints (e.g., "under $300", "from US retailers only")
+  - Clarify intent (e.g., "for comparison" vs "to purchase")
+  - Narrow scope (e.g., "new products only" vs "including refurbished")
+
+Type additional details or press Enter to continue with current query.
+"""
+    return clarification
+
+
+async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = False) -> dict:
     """
     FIXED PIPELINE: Executes research in a deterministic order.
 
     This function ALWAYS executes ALL steps in sequence - no LLM decisions:
 
+    STEP 0: (Optional) Ask for clarifications
     STEP 1: Classify query
     STEP 2: Search web for URLs
     STEP 3: Extract data from URLs
@@ -212,6 +274,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
     Args:
         query: The user's research query
         user_id: User identifier for personalization
+        interactive: If True, asks user for clarifications after classification
 
     Returns:
         Dictionary with complete research results including credibility analysis
@@ -224,11 +287,11 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
     # ============================================================
     # STEP 1: ALWAYS CLASSIFY QUERY
     # ============================================================
-    print(f"\n[STEP 1/4] Classifying query...")
+    print(f"\n[STEP 1/5] Classifying query...")
     classification = await classify_user_query(query, user_id)
 
     if classification.get('error'):
-        print(f"[STEP 1/4] X Classification failed: {classification['error']}")
+        print(f"[STEP 1/5] X Classification failed: {classification['error']}")
         # Use defaults if classification fails
         classification = {
             "query_type": "factual",
@@ -237,15 +300,32 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
             "key_topics": []
         }
     else:
-        print(f"[STEP 1/4] OK Classification complete")
+        print(f"[STEP 1/5] OK Classification complete")
         print(f"  Type: {classification.get('query_type')}")
         print(f"  Strategy: {classification.get('research_strategy')}")
         print(f"  Complexity: {classification.get('complexity_score')}/10")
 
     # ============================================================
+    # STEP 1.5: OPTIONAL INTERACTIVE CLARIFICATION
+    # ============================================================
+    if interactive:
+        print(f"\n[CLARIFICATION] Asking for user clarification...")
+        clarification_prompt = generate_clarification_prompt(query, classification)
+        print(clarification_prompt)
+
+        # In interactive mode, wait for user input
+        # This will be handled by the ADK UI or CLI
+        return {
+            "status": "awaiting_clarification",
+            "query": query,
+            "classification": classification,
+            "clarification_prompt": clarification_prompt
+        }
+
+    # ============================================================
     # STEP 2: SMART SEARCH STRATEGY (Google Shopping API or Web Search)
     # ============================================================
-    print(f"\n[STEP 2/4] Determining search strategy...")
+    print(f"\n[STEP 2/5] Determining search strategy...")
 
     # Check if this is a product price query - use Google Shopping API
     query_type = classification.get('query_type', '').lower()
@@ -256,43 +336,43 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
     search_result = {'status': 'pending', 'urls': []}
 
     if is_price_query:
-        print(f"[STEP 2/4] Detected price query - using Google Shopping API...")
+        print(f"[STEP 2/5] Detected price query - using Google Shopping API...")
         shopping_result = search_google_shopping(query, num_results=5)
 
         if shopping_result.get('status') == 'success':
-            print(f"[STEP 2/4] OK Google Shopping API returned {shopping_result.get('num_results', 0)} results")
+            print(f"[STEP 2/5] OK Google Shopping API returned {shopping_result.get('num_results', 0)} results")
             google_shopping_data = shopping_result.get('results', [])
 
             # Also do regular web search as backup
-            print(f"[STEP 2/4] Also searching web for additional sources...")
+            print(f"[STEP 2/5] Also searching web for additional sources...")
             search_result = search_web(query, num_results=3)
         else:
             error_msg = shopping_result.get('error_message', 'Unknown error')
-            print(f"[STEP 2/4] WARN Google Shopping API failed: {error_msg}")
-            print(f"[STEP 2/4] Falling back to web search...")
+            print(f"[STEP 2/5] WARN Google Shopping API failed: {error_msg}")
+            print(f"[STEP 2/5] Falling back to web search...")
             search_result = search_web(query, num_results=5)
     else:
-        print(f"[STEP 2/4] Using web search for general query...")
+        print(f"[STEP 2/5] Using web search for general query...")
         search_result = search_web(query, num_results=5)
 
     if search_result.get('status') == 'success' and search_result.get('urls'):
-        print(f"[STEP 2/4] OK Found {len(search_result['urls'])} URLs")
+        print(f"[STEP 2/5] OK Found {len(search_result['urls'])} URLs")
     else:
         if not google_shopping_data:  # Only warn if we don't have shopping data
-            print(f"[STEP 2/4] WARN Search returned no URLs (status: {search_result.get('status')})")
+            print(f"[STEP 2/5] WARN Search returned no URLs (status: {search_result.get('status')})")
             error_msg = search_result.get('error_message') or search_result.get('message', 'Unknown error')
             print(f"  Message: {error_msg}")
 
     # ============================================================
     # STEP 3: FETCH DATA (Google Shopping + URLs)
     # ============================================================
-    print(f"\n[STEP 3/4] Fetching data from sources...")
+    print(f"\n[STEP 3/5] Fetching data from sources...")
     fetched_data = []
     failed_urls = []
 
     # First, add Google Shopping results if we have them
     if google_shopping_data:
-        print(f"[STEP 3/4] Adding {len(google_shopping_data)} Google Shopping results...")
+        print(f"[STEP 3/5] Adding {len(google_shopping_data)} Google Shopping results...")
         for i, shopping_item in enumerate(google_shopping_data, 1):
             fetched_data.append({
                 'url': shopping_item.get('link', f'google_shopping_result_{i}'),
@@ -308,7 +388,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
                 },
                 'source': {'title': shopping_item.get('seller', 'Google Shopping')}
             })
-        print(f"[STEP 3/4] OK Added {len(google_shopping_data)} Google Shopping results")
+        print(f"[STEP 3/5] OK Added {len(google_shopping_data)} Google Shopping results")
 
     urls = search_result.get('urls', [])
     # Try more URLs but limit fetched data to best 3
@@ -363,9 +443,9 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
 
     # Report results
     if fetched_data:
-        print(f"[STEP 3/4] OK Fetched data from {len(fetched_data)} sources")
+        print(f"[STEP 3/5] OK Fetched data from {len(fetched_data)} sources")
     else:
-        print(f"[STEP 3/4] WARN No data fetched from any source")
+        print(f"[STEP 3/5] WARN No data fetched from any source")
         if failed_urls:
             print(f"  Failed URLs ({len(failed_urls)}):")
             for url, error in failed_urls[:3]:  # Show first 3
@@ -374,7 +454,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default") -> dict:
     # ============================================================
     # STEP 4: ALWAYS FORMAT RESULTS
     # ============================================================
-    print(f"\n[STEP 4/4] Formatting results with Information Gatherer...")
+    print(f"\n[STEP 4/5] Formatting results with Information Gatherer...")
 
     # Build prompt with fetched data and helpful context
     if fetched_data:
