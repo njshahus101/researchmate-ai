@@ -3,11 +3,19 @@ MCP Price Extractor Server
 
 A custom MCP server that extracts structured product data from web pages.
 Specializes in finding prices, specifications, and product details for comparison research.
+
+Enhanced Features:
+- JSON-LD schema.org extraction
+- Amazon-specific parsing
+- Multiple price formats (regular, sale, discount)
+- Product images
+- Enhanced error handling
 """
 
 import requests
 from bs4 import BeautifulSoup
 import re
+import json
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
 
@@ -44,9 +52,177 @@ class PriceExtractorServer:
             'INR': r'₹\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
         }
 
+    def _extract_json_ld(self, soup: BeautifulSoup) -> Optional[Dict]:
+        """
+        Extract JSON-LD structured data (schema.org).
+
+        Many e-commerce sites embed product data in JSON-LD format.
+        This is the most reliable extraction method.
+        """
+        scripts = soup.find_all('script', type='application/ld+json')
+
+        for script in scripts:
+            try:
+                data = json.loads(script.string)
+
+                # Handle both single objects and arrays
+                if isinstance(data, list):
+                    # Find Product schema in array
+                    for item in data:
+                        if isinstance(item, dict) and item.get('@type') == 'Product':
+                            return item
+                elif isinstance(data, dict):
+                    # Check if it's a Product or contains a Product
+                    if data.get('@type') == 'Product':
+                        return data
+                    # Sometimes nested in @graph
+                    if '@graph' in data:
+                        for item in data['@graph']:
+                            if isinstance(item, dict) and item.get('@type') == 'Product':
+                                return item
+            except (json.JSONDecodeError, AttributeError):
+                continue
+
+        return None
+
+    def _extract_from_json_ld(self, json_ld: Dict) -> Dict[str, Any]:
+        """Extract product data from JSON-LD Product schema."""
+        extracted = {}
+
+        # Name
+        extracted['name'] = json_ld.get('name', '')
+
+        # Price - handle various formats
+        if 'offers' in json_ld:
+            offers = json_ld['offers']
+            if isinstance(offers, list):
+                offers = offers[0]
+            if isinstance(offers, dict):
+                extracted['price'] = offers.get('price')
+                extracted['currency'] = offers.get('priceCurrency')
+                extracted['availability'] = offers.get('availability', '').split('/')[-1]
+
+                # Check for sale price vs regular price
+                if 'priceSpecification' in offers:
+                    spec = offers['priceSpecification']
+                    if isinstance(spec, dict):
+                        extracted['regular_price'] = spec.get('price')
+
+        # Rating
+        if 'aggregateRating' in json_ld:
+            rating = json_ld['aggregateRating']
+            if isinstance(rating, dict):
+                extracted['rating'] = rating.get('ratingValue')
+                extracted['review_count'] = rating.get('reviewCount') or rating.get('ratingCount')
+
+        # Description/Features
+        if 'description' in json_ld:
+            extracted['description'] = json_ld['description']
+
+        # Images
+        if 'image' in json_ld:
+            images = json_ld['image']
+            if isinstance(images, list):
+                extracted['images'] = images[:3]  # First 3 images
+            elif isinstance(images, str):
+                extracted['images'] = [images]
+
+        # Brand
+        if 'brand' in json_ld:
+            brand = json_ld['brand']
+            if isinstance(brand, dict):
+                extracted['brand'] = brand.get('name', '')
+            else:
+                extracted['brand'] = brand
+
+        return extracted
+
+    def _is_amazon_url(self, url: str) -> bool:
+        """Check if URL is an Amazon product page."""
+        return 'amazon.com' in url or 'amazon.' in urlparse(url).netloc
+
+    def _extract_amazon_specific(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        """Amazon-specific extraction using known selectors."""
+        data = {}
+
+        # Amazon product title
+        title_elem = soup.find('span', id='productTitle')
+        if title_elem:
+            data['name'] = title_elem.get_text().strip()
+
+        # Amazon prices - handle multiple price formats
+        # Regular price
+        price_whole = soup.find('span', class_='a-price-whole')
+        price_fraction = soup.find('span', class_='a-price-fraction')
+        if price_whole:
+            price_str = price_whole.get_text().strip()
+            if price_fraction:
+                price_str += price_fraction.get_text().strip()
+            data['price'] = f"${price_str.replace(',', '')}"
+            data['currency'] = 'USD'
+
+        # List price (original price before discount)
+        list_price = soup.find('span', class_='a-price a-text-price')
+        if list_price:
+            price_text = list_price.get_text().strip()
+            data['list_price'] = price_text
+
+        # Availability
+        availability_elem = soup.find('div', id='availability')
+        if availability_elem:
+            avail_text = availability_elem.get_text().strip()
+            data['availability'] = avail_text
+
+        # Rating
+        rating_elem = soup.find('span', class_='a-icon-alt')
+        if rating_elem:
+            rating_text = rating_elem.get_text()
+            match = re.search(r'(\d+\.?\d*)\s*out of\s*5', rating_text)
+            if match:
+                data['rating'] = float(match.group(1))
+
+        # Review count
+        review_elem = soup.find('span', id='acrCustomerReviewText')
+        if review_elem:
+            review_text = review_elem.get_text()
+            match = re.search(r'([\d,]+)', review_text)
+            if match:
+                data['review_count'] = int(match.group(1).replace(',', ''))
+
+        # Features (bullet points)
+        feature_bullets = soup.find('div', id='feature-bullets')
+        if feature_bullets:
+            features = []
+            for li in feature_bullets.find_all('li', class_='a-spacing-mini'):
+                span = li.find('span', class_='a-list-item')
+                if span:
+                    feature_text = span.get_text().strip()
+                    if feature_text and len(feature_text) > 10:
+                        features.append(feature_text)
+            if features:
+                data['features'] = features
+
+        # Product images
+        image_block = soup.find('div', id='altImages')
+        if image_block:
+            images = []
+            for img in image_block.find_all('img')[:5]:  # First 5 images
+                src = img.get('src', '')
+                if src and 'sprite' not in src:  # Avoid sprite images
+                    images.append(src)
+            if images:
+                data['images'] = images
+
+        return data
+
     def extract_product_data(self, url: str) -> Dict[str, Any]:
         """
         Extract structured product data from a URL.
+
+        Uses multiple extraction strategies:
+        1. JSON-LD structured data (most reliable)
+        2. Site-specific selectors (Amazon, etc.)
+        3. Generic HTML parsing (fallback)
 
         Args:
             url: Product page URL
@@ -57,16 +233,22 @@ class PriceExtractorServer:
                 "status": "success|error",
                 "product_name": "...",
                 "price": "$99.99",
+                "list_price": "$129.99",  # Original price (if on sale)
                 "currency": "USD",
                 "availability": "In Stock",
                 "specifications": {...},
                 "rating": 4.5,
                 "review_count": 123,
                 "features": [...],
+                "images": [...],
+                "brand": "...",
+                "description": "...",
                 "error_message": "..." (if error)
             }
         """
         try:
+            print(f"[EXTRACT] Fetching product page: {url[:60]}...")
+
             # Fetch the page
             response = requests.get(
                 url,
@@ -76,6 +258,7 @@ class PriceExtractorServer:
             )
 
             if response.status_code != 200:
+                print(f"[EXTRACT] HTTP error: {response.status_code}")
                 return {
                     "status": "error",
                     "url": url,
@@ -83,28 +266,54 @@ class PriceExtractorServer:
                 }
 
             soup = BeautifulSoup(response.content, 'html.parser')
+            result = {"status": "success", "url": url}
 
-            # Extract components
-            product_name = self._extract_product_name(soup)
-            price_data = self._extract_price(soup)
-            availability = self._extract_availability(soup)
-            specifications = self._extract_specifications(soup)
-            rating_data = self._extract_rating(soup)
-            features = self._extract_features(soup)
+            # STRATEGY 1: Try JSON-LD first (most reliable)
+            print(f"[EXTRACT] Attempting JSON-LD extraction...")
+            json_ld = self._extract_json_ld(soup)
+            if json_ld:
+                print(f"[EXTRACT] Found JSON-LD data")
+                json_ld_data = self._extract_from_json_ld(json_ld)
+                result.update(json_ld_data)
 
-            return {
-                "status": "success",
-                "url": url,
-                "product_name": product_name,
-                "price": price_data.get("price"),
-                "currency": price_data.get("currency"),
-                "availability": availability,
-                "specifications": specifications,
-                "rating": rating_data.get("rating"),
-                "review_count": rating_data.get("review_count"),
-                "features": features,
-                "domain": urlparse(url).netloc
-            }
+            # STRATEGY 2: Site-specific extraction (for known sites like Amazon)
+            if self._is_amazon_url(url):
+                print(f"[EXTRACT] Using Amazon-specific extraction...")
+                amazon_data = self._extract_amazon_specific(soup)
+                # Merge, preferring Amazon-specific data
+                for key, value in amazon_data.items():
+                    if value:  # Only update if value exists
+                        result[key] = value
+
+            # STRATEGY 3: Generic extraction (fallback)
+            print(f"[EXTRACT] Applying generic extraction...")
+            if 'name' not in result or not result.get('name'):
+                result['product_name'] = self._extract_product_name(soup)
+            else:
+                result['product_name'] = result.pop('name', '')
+
+            if 'price' not in result or not result.get('price'):
+                price_data = self._extract_price(soup)
+                result.update(price_data)
+
+            if 'availability' not in result or not result.get('availability'):
+                result['availability'] = self._extract_availability(soup)
+
+            if 'rating' not in result or not result.get('rating'):
+                rating_data = self._extract_rating(soup)
+                result.update(rating_data)
+
+            if 'features' not in result or not result.get('features'):
+                result['features'] = self._extract_features(soup)
+
+            # Always try to get specifications
+            result['specifications'] = self._extract_specifications(soup)
+
+            # Add domain
+            result['domain'] = urlparse(url).netloc
+
+            print(f"[EXTRACT] Extraction complete - Price: {result.get('price')}, Rating: {result.get('rating')}")
+            return result
 
         except requests.Timeout:
             return {
