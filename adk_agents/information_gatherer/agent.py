@@ -19,9 +19,17 @@ from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
 
+# Import observability
+from utils.observability import get_logger, get_tracer, get_metrics
+
 # Load environment variables
 env_path = project_root / '.env'
 load_dotenv(dotenv_path=env_path)
+
+# Initialize observability
+logger = get_logger("information_gatherer")
+tracer = get_tracer()
+metrics = get_metrics()
 
 # Create retry config
 retry_config = types.HttpRetryOptions(
@@ -31,10 +39,7 @@ retry_config = types.HttpRetryOptions(
     http_status_codes=[429, 500, 503, 504],
 )
 
-print("Information Gatherer initialized:")
-print("  - Role: Format pre-fetched data only")
-print("  - NO web tools (orchestrator handles fetching)")
-print("  - Model: gemini-2.5-flash-lite")
+logger.info("Information Gatherer initialized", role="format_prefetched_data", model="gemini-2.5-flash-lite")
 
 # Create Information Gatherer agent - FORMATTING ONLY
 agent = LlmAgent(

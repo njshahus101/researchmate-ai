@@ -13,9 +13,17 @@ from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
 
+# Import observability
+from utils.observability import get_logger, get_tracer, get_metrics
+
 # Load environment variables
 env_path = project_root / '.env'
 load_dotenv(dotenv_path=env_path)
+
+# Initialize observability
+logger = get_logger("query_classifier")
+tracer = get_tracer()
+metrics = get_metrics()
 
 # Create retry config
 retry_config = types.HttpRetryOptions(
@@ -81,4 +89,4 @@ Be concise and accurate in your classification.""",
     tools=[],
 )
 
-print(f"Query Classifier agent '{agent.name}' initialized")
+logger.info("Query Classifier agent initialized", agent_name=agent.name)

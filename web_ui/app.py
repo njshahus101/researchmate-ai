@@ -22,8 +22,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from adk_agents.orchestrator.agent import agent as orchestrator_agent, execute_fixed_pipeline
 from google.adk.runners import InMemoryRunner
 
-# Import database
-from database import db
+# Import persistent session service
+from services.persistent_session_service import create_persistent_session_service
+
+# Initialize persistent session service for web UI
+session_service = create_persistent_session_service("web_ui_sessions")
 
 # Initialize FastAPI app
 app = FastAPI(title="ResearchMate AI", version="1.0.0")
@@ -71,55 +74,44 @@ async def chat(request: ChatRequest):
     Main chat endpoint - sends message to orchestrator agent
     """
     try:
-        # Create or get session
+        # Get existing session ID or None (orchestrator will create new session)
         session_id = request.session_id
-        if not session_id:
-            session_id = str(uuid.uuid4())
-            db.create_session(session_id, title="New Conversation")
-
-        # Store user message
-        db.add_message(session_id, "user", request.message)
 
         # Call orchestrator agent directly using the pipeline
+        # The orchestrator now handles session creation and message storage
         print(f"\n[WEB UI] Processing query: {request.message[:100]}...")
-        print(f"[WEB UI] Session ID: {session_id}")
+        print(f"[WEB UI] Session ID: {session_id or 'new'}")
 
-        # Call the fixed pipeline directly (bypass ADK's extra LLM call)
+        # Call the fixed pipeline with session_id (orchestrator handles session persistence)
         result = await execute_fixed_pipeline(
             query=request.message,
-            user_id="web_user"
+            user_id="web_user",
+            session_id=session_id
         )
 
-        # Extract the content from pipeline result
+        # Extract the content and session ID from pipeline result
         if result.get("status") == "success":
             response_text = result.get("content", "")
+            actual_session_id = result.get("session_id", session_id)
             print(f"[WEB UI] Pipeline completed successfully")
         else:
             response_text = f"Error: {result.get('error', 'Unknown error')}"
+            actual_session_id = result.get("session_id", session_id or str(uuid.uuid4()))
             print(f"[WEB UI] Pipeline failed: {result.get('error')}")
 
-        # Store assistant response
-        db.add_message(
-            session_id,
-            "assistant",
-            response_text,
-            metadata={
-                "pipeline_status": result.get("status"),
-                "sources_fetched": result.get("sources_fetched", 0),
-                "pipeline_steps": result.get("pipeline_steps", {})
-            }
-        )
-
-        # Auto-generate session title from first message
-        messages = db.get_session_messages(session_id)
-        if len(messages) == 2:  # First Q&A pair
+        # Auto-generate session title from first message if this is a new session
+        if not session_id and actual_session_id:
             title = request.message[:50] + "..." if len(request.message) > 50 else request.message
-            db.update_session_title(session_id, title)
+            session_service.update_session_title(actual_session_id, title)
+
+        # Get message count for response
+        session_data = session_service.get_session(actual_session_id)
+        message_count = len(session_data.get("messages", []))
 
         return ChatResponse(
             response=response_text,
-            session_id=session_id,
-            message_id=len(messages)
+            session_id=actual_session_id,
+            message_id=message_count
         )
 
     except Exception as e:
@@ -130,45 +122,52 @@ async def chat(request: ChatRequest):
 
 
 @app.get("/api/sessions")
-async def get_sessions(user_id: str = "default"):
+async def get_sessions(user_id: str = "web_user"):
     """Get all conversation sessions"""
-    sessions = db.get_all_sessions(user_id)
+    sessions = session_service.list_sessions(user_id)
     return {"sessions": sessions}
 
 
 @app.get("/api/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get a specific session with all messages"""
-    session = db.get_session(session_id)
-    if not session:
+    try:
+        session_data = session_service.get_session(session_id)
+        return {
+            "session": {
+                "id": session_data["session_id"],
+                "title": session_data["title"],
+                "created_at": session_data["created_at"],
+                "updated_at": session_data["updated_at"],
+                "user_id": session_data["user_id"]
+            },
+            "messages": session_data["messages"]
+        }
+    except ValueError:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    messages = db.get_session_messages(session_id)
-    return {
-        "session": session,
-        "messages": messages
-    }
 
 
 @app.post("/api/sessions")
 async def create_session(request: SessionCreate):
     """Create a new conversation session"""
-    session_id = str(uuid.uuid4())
-    db.create_session(session_id, title=request.title)
+    session_id = session_service.create_session(
+        user_id="web_user",
+        title=request.title
+    )
     return {"session_id": session_id}
 
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete a conversation session"""
-    db.delete_session(session_id)
+    session_service.delete_session(session_id)
     return {"status": "deleted"}
 
 
 @app.put("/api/sessions/{session_id}/title")
 async def update_session_title(session_id: str, title: str):
     """Update session title"""
-    db.update_session_title(session_id, title)
+    session_service.update_session_title(session_id, title)
     return {"status": "updated"}
 
 

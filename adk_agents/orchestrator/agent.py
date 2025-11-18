@@ -16,6 +16,8 @@ a fixed sequence of steps executed by Python code.
 import os
 import sys
 import json
+import time
+import uuid
 from pathlib import Path
 
 # Add project root to path
@@ -32,6 +34,18 @@ from google.genai import types
 # Import research tools for FIXED PIPELINE execution
 from tools.research_tools import search_web, fetch_web_content, extract_product_info, search_google_shopping
 
+# Import observability utilities
+from utils.observability import (
+    get_logger,
+    get_tracer,
+    get_metrics,
+    get_error_tracker,
+    track_operation
+)
+
+# Import persistent session service for conversation history
+from services.persistent_session_service import create_persistent_session_service
+
 # Load environment variables
 env_path = project_root / '.env'
 load_dotenv(dotenv_path=env_path)
@@ -41,7 +55,13 @@ api_key = os.getenv("GOOGLE_API_KEY")
 if not api_key:
     raise ValueError("GOOGLE_API_KEY not found in .env file")
 
-print("Initializing orchestrator agent with A2A integration...")
+# Initialize observability
+logger = get_logger("orchestrator")
+tracer = get_tracer()
+metrics = get_metrics()
+error_tracker = get_error_tracker()
+
+logger.info("Initializing orchestrator agent with A2A integration")
 
 # Create retry config
 retry_config = types.HttpRetryOptions(
@@ -52,46 +72,24 @@ retry_config = types.HttpRetryOptions(
 )
 
 # Load sub-agents
-print("  Loading Query Classifier agent...")
+logger.info("Loading sub-agents")
 sys.path.insert(0, str(Path(__file__).parent.parent / 'query_classifier'))
 from adk_agents.query_classifier.agent import agent as classifier_agent
 
-print("  Loading Information Gatherer agent...")
 sys.path.insert(0, str(Path(__file__).parent.parent / 'information_gatherer'))
 from adk_agents.information_gatherer.agent import agent as gatherer_agent
 
-print("  Loading Content Analysis agent...")
 sys.path.insert(0, str(Path(__file__).parent.parent / 'content_analyzer'))
 from adk_agents.content_analyzer.agent import agent as analyzer_agent
 
-print("  Loading Report Generator agent...")
 sys.path.insert(0, str(Path(__file__).parent.parent / 'report_generator'))
 from adk_agents.report_generator.agent import agent as report_generator_agent
 
-# Initialize memory service (simplified version for ADK UI)
-class SimpleMemoryService:
-    """Simplified memory service for ADK UI context"""
-    def __init__(self):
-        self.user_memories = {}
-        self.research_history = {}
+logger.info("All sub-agents loaded successfully")
 
-    def get_user_memory(self, user_id: str) -> dict:
-        return self.user_memories.get(user_id, {})
-
-    def get_recent_research(self, user_id: str, limit: int = 3) -> list:
-        history = self.research_history.get(user_id, [])
-        return history[-limit:] if history else []
-
-    def add_research_entry(self, user_id: str, query: str, query_type: str, topics: list):
-        if user_id not in self.research_history:
-            self.research_history[user_id] = []
-        self.research_history[user_id].append({
-            "query": query,
-            "query_type": query_type,
-            "topics": topics
-        })
-
-memory_service = SimpleMemoryService()
+# Initialize persistent session service for conversation history and user memory
+session_service = create_persistent_session_service("orchestrator_sessions")
+logger.info("Persistent session service initialized for conversation history")
 
 # Create A2A tool functions
 async def classify_user_query(query: str, user_id: str = "default") -> dict:
@@ -108,15 +106,15 @@ async def classify_user_query(query: str, user_id: str = "default") -> dict:
         Dictionary with classification results including query_type,
         research_strategy, complexity_score, and key_topics
     """
-    print(f"\n[A2A] Calling Query Classifier for: {query[:50]}...")
+    logger.info("Calling Query Classifier via A2A", query_preview=query[:50], query_id=query_id if 'query_id' in locals() else None)
 
-    # Get user context from memory
-    user_memory = memory_service.get_user_memory(user_id)
-    recent_research = memory_service.get_recent_research(user_id, limit=3)
+    # Get user context from persistent memory
+    user_memory = session_service.get_user_memory(user_id)
+    recent_research = user_memory.get("research_history", [])[-3:] if user_memory else []
 
     # Build context string
     context = f"\n\nUser ID: {user_id}"
-    if user_memory.get("preferences"):
+    if user_memory and user_memory.get("preferences"):
         context += f"\nUser Preferences: {json.dumps(user_memory['preferences'])}"
     if recent_research:
         context += f"\nRecent Research: {json.dumps(recent_research)}"
@@ -125,7 +123,7 @@ async def classify_user_query(query: str, user_id: str = "default") -> dict:
     runner = InMemoryRunner(agent=classifier_agent)
     try:
         response = await runner.run_debug(query + context)
-        print(f"[A2A] Query Classifier response received")
+        logger.info("Query Classifier response received")
 
         # Extract response
         if isinstance(response, list) and len(response) > 0:
@@ -182,12 +180,16 @@ async def classify_user_query(query: str, user_id: str = "default") -> dict:
             classification = json.loads(first_json)
             print(f"[A2A] Successfully extracted first JSON object (ignored duplicate)")
 
-        # Store in memory
-        memory_service.add_research_entry(
+        # Store in persistent memory
+        session_service.store_user_memory(
             user_id,
+            "research_history",
             query,
-            classification.get('query_type', 'unknown'),
-            classification.get('key_topics', [])
+            {
+                "query": query,
+                "query_type": classification.get('query_type', 'unknown'),
+                "topics": classification.get('key_topics', [])
+            }
         )
 
         print(f"[A2A] Classification complete: {classification.get('query_type')} - {classification.get('research_strategy')}")
@@ -263,7 +265,7 @@ Type additional details or press Enter to continue with current query.
     return clarification
 
 
-async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = False) -> dict:
+async def execute_fixed_pipeline(query: str, user_id: str = "default", interactive: bool = False, session_id: str = None) -> dict:
     """
     FIXED PIPELINE: Executes research in a deterministic order.
 
@@ -281,14 +283,40 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
         query: The user's research query
         user_id: User identifier for personalization
         interactive: If True, asks user for clarifications after classification
+        session_id: Optional session ID for conversation persistence
 
     Returns:
         Dictionary with complete research results including final report
     """
-    print(f"\n{'='*60}")
-    print(f"FIXED PIPELINE EXECUTION")
-    print(f"Query: {query}")
-    print(f"{'='*60}")
+    # Generate unique query ID for tracking
+    query_id = str(uuid.uuid4())
+    pipeline_start_time = time.time()
+
+    # Create or resume session for conversation persistence
+    if not session_id:
+        session_id = session_service.create_session(user_id=user_id, title=query[:50])
+        logger.info("Created new session", session_id=session_id, user_id=user_id)
+
+    # Store user query in session
+    session_service.add_message(session_id, "user", query, metadata={"query_id": query_id})
+
+    # Start distributed trace for entire pipeline
+    with tracer.trace_span("fixed_pipeline", {
+        "query": query[:100],  # Truncate for trace attributes
+        "user_id": user_id,
+        "query_id": query_id,
+        "interactive": str(interactive)
+    }):
+        logger.info(
+            "Starting fixed pipeline execution",
+            query_id=query_id,
+            user_id=user_id,
+            query=query,
+            interactive=interactive
+        )
+
+        # Record pipeline start metric
+        metrics.increment_counter("pipeline_start_total", labels={"user_id": user_id})
 
     # ============================================================
     # STEP 1: ALWAYS CLASSIFY QUERY
@@ -675,12 +703,27 @@ Remember: You are the final voice to the user. Transform this data into actionab
         print(f"PIPELINE COMPLETE")
         print(f"{'='*60}\n")
 
+        # Store assistant's response in session
+        session_service.add_message(
+            session_id,
+            "assistant",
+            final_report,
+            metadata={
+                "query_id": query_id,
+                "sources_fetched": len(fetched_data),
+                "classification": classification.get('query_type'),
+                "pipeline_duration_seconds": time.time() - pipeline_start_time
+            }
+        )
+        logger.info("Stored assistant response in session", session_id=session_id)
+
         return {
             "status": "success",
             "content": final_report,  # Return the final report from Report Generator
             "classification": classification,
             "sources_fetched": len(fetched_data),
             "content_analysis": analysis_json,
+            "session_id": session_id,  # Include session ID for reference
             "intermediate_outputs": {
                 "information_gatherer": response_text,  # Keep for debugging
             },
