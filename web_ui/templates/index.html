@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResearchMate AI - Your AI Research Assistant</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar for conversation history -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-container">
+                    <svg class="logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Microscope/Research icon -->
+                        <circle cx="50" cy="50" r="45" fill="#4F46E5" opacity="0.1"/>
+                        <path d="M 30 30 L 40 50 L 35 50 L 35 70 L 65 70 L 65 50 L 60 50 L 70 30 Z" fill="#4F46E5"/>
+                        <circle cx="50" cy="40" r="8" fill="#818CF8"/>
+                        <rect x="32" y="70" width="36" height="4" fill="#4F46E5"/>
+                    </svg>
+                    <h1>ResearchMate AI</h1>
+                </div>
+                <button class="new-chat-btn" onclick="newChat()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 5v14M5 12h14" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    New Chat
+                </button>
+            </div>
+            <div class="conversation-list" id="conversationList">
+                <!-- Conversations will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Main chat area -->
+        <div class="main-content">
+            <div class="chat-header">
+                <button class="sidebar-toggle" onclick="toggleSidebar()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 12h18M3 6h18M3 18h18" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <div class="header-title">
+                    <h2 id="sessionTitle">New Conversation</h2>
+                    <p class="subtitle">AI-powered research assistant with verified sources</p>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <!-- Welcome message -->
+                <div class="welcome-message">
+                    <div class="welcome-icon">
+                        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="50" cy="50" r="45" fill="#4F46E5" opacity="0.1"/>
+                            <path d="M 30 30 L 40 50 L 35 50 L 35 70 L 65 70 L 65 50 L 60 50 L 70 30 Z" fill="#4F46E5"/>
+                            <circle cx="50" cy="40" r="8" fill="#818CF8"/>
+                            <rect x="32" y="70" width="36" height="4" fill="#4F46E5"/>
+                        </svg>
+                    </div>
+                    <h2>Welcome to ResearchMate AI</h2>
+                    <p>Your intelligent research assistant with verified sources and citations.</p>
+                    <div class="example-queries">
+                        <h3>Try asking:</h3>
+                        <button class="example-btn" onclick="setQuery('What are the best wireless headphones under $250?')">
+                            🎧 Best wireless headphones under $250?
+                        </button>
+                        <button class="example-btn" onclick="setQuery('Compare Toyota Camry vs Honda Accord 2024')">
+                            🚗 Compare Toyota Camry vs Honda Accord 2024
+                        </button>
+                        <button class="example-btn" onclick="setQuery('Help me get started with astrophotography')">
+                            🔭 Getting started with astrophotography
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <form class="chat-input-form" onsubmit="sendMessage(event)">
+                    <textarea
+                        id="messageInput"
+                        class="chat-input"
+                        placeholder="Ask me anything... I'll provide detailed research with verified sources"
+                        rows="1"
+                        maxlength="2000"
+                    ></textarea>
+                    <button type="submit" class="send-btn" id="sendBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </form>
+                <div class="input-hint">
+                    Press <kbd>Enter</kbd> to send, <kbd>Shift + Enter</kbd> for new line
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
