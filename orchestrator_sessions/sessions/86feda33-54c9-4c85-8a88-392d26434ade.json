@@ -1,0 +1,30 @@
+{
+  "session_id": "86feda33-54c9-4c85-8a88-392d26434ade",
+  "user_id": "test_user",
+  "title": "price",
+  "created_at": "2025-11-18T16:38:34.625655",
+  "updated_at": "2025-11-18T16:38:47.042189",
+  "messages": [
+    {
+      "role": "user",
+      "content": "price",
+      "timestamp": "2025-11-18T16:38:34.631723",
+      "metadata": {
+        "query_id": "2988dc8b-3366-4ef8-9d82-7800e4626f21"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Here's a summary of the fetched data for the Sony WH-1000XM5 headphones:\n\n**Sony WH-1000XM5 Headphones**\n\n**Pricing:**\n*   **$348.00** (Amazon, Best Buy)\n*   **$379.99** (Best Buy)\n\n**Ratings & Reviews:**\n*   **Rating:** 4.7 out of 5 stars (Amazon, Best Buy)\n*   **Reviews:** 2,543 customer reviews (Amazon, Best Buy)\n\n**Key Features (from multiple sources):**\n*   Active Noise Cancellation\n*   30hr Battery Life\n*   Bluetooth 5.2\n\n**Sources:**\n*   Amazon: https://amazon.com/sony-wh1000xm5\n*   Best Buy: https://bestbuy.com/sony-headphones\n*   CNET Review: https://cnet.com/reviews/sony-wh1000xm5",
+      "timestamp": "2025-11-18T16:38:47.042169",
+      "metadata": {
+        "query_id": "2988dc8b-3366-4ef8-9d82-7800e4626f21",
+        "sources_fetched": 5,
+        "classification": "factual",
+        "pipeline_duration_seconds": 12.407019853591919,
+        "quality_score": 42,
+        "quality_grade": "F (Poor Quality)"
+      }
+    }
+  ]
+}

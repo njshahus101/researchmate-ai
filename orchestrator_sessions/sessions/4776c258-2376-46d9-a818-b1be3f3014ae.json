@@ -1,0 +1,17 @@
+{
+  "session_id": "4776c258-2376-46d9-a818-b1be3f3014ae",
+  "user_id": "test_user",
+  "title": "Compare prices for Sony WH-1000XM5 headphones",
+  "created_at": "2025-11-18T16:37:09.721077",
+  "updated_at": "2025-11-18T16:37:09.735276",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Compare prices for Sony WH-1000XM5 headphones",
+      "timestamp": "2025-11-18T16:37:09.735263",
+      "metadata": {
+        "query_id": "659bcedb-f27f-4132-adc0-6462cca4fc28"
+      }
+    }
+  ]
+}

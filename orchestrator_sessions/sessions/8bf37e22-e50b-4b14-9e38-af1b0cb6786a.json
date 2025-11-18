@@ -1,0 +1,30 @@
+{
+  "session_id": "8bf37e22-e50b-4b14-9e38-af1b0cb6786a",
+  "user_id": "test_user",
+  "title": "Compare prices for Sony WH-1000XM5 headphones",
+  "created_at": "2025-11-18T16:37:30.488021",
+  "updated_at": "2025-11-18T16:37:46.899352",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Compare prices for Sony WH-1000XM5 headphones",
+      "timestamp": "2025-11-18T16:37:30.500749",
+      "metadata": {
+        "query_id": "4366ef70-ac78-4d03-bce0-965a9da343a7"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Here's a comparison of prices and ratings for the Sony WH-1000XM5 headphones based on the fetched data:\n\n**Sony WH-1000XM5 Headphones Comparison**\n\n*   **Amazon**\n    *   Price: $348.00\n    *   Rating: 4.7 out of 5 stars\n    *   Reviews: 2,543\n    *   Features: Active Noise Cancellation, 30hr Battery, Bluetooth 5.2\n    *   Source:\n        *   https://amazon.com/sony-wh1000xm5\n        *   https://amazon.com/sony-wh1000xm5\n\n*   **Best Buy**\n    *   Price: $379.99 (from Google Shopping) / $348.00 (from Best Buy listing)\n    *   Rating: 4.6 out of 5 stars (from Google Shopping) / 4.7 out of 5 stars (from Best Buy listing)\n    *   Reviews: 892 (from Google Shopping) / 2,543 (from Best Buy listing)\n    *   Features: Active Noise Cancellation, 30hr Battery, Bluetooth 5.2 (from Best Buy listing)\n    *   Source:\n        *   https://bestbuy.com/sony-headphones\n        *   https://bestbuy.com/sony-headphones\n\n*   **CNET Review**\n    *   Content Summary: The Sony WH-1000XM5 headphones offer excellent noise cancellation and 30-hour battery life.\n    *   Price Mentioned: $348\n    *   Rating: 4.7 out of 5 stars\n    *   Reviews: 2,543\n    *   Source: https://cnet.com/reviews/sony-wh1000xm5\n\n**Summary:**\n\nThe Sony WH-1000XM5 headphones are available for $348.00 at Amazon. Best Buy lists the headphones at $379.99 via Google Shopping, but a separate listing on Best Buy shows them for $348.00. Ratings are consistently high across sources, generally around 4.7 out of 5 stars, with review counts varying by platform. Key features highlighted include Active Noise Cancellation, 30-hour battery life, and Bluetooth 5.2.",
+      "timestamp": "2025-11-18T16:37:46.899329",
+      "metadata": {
+        "query_id": "4366ef70-ac78-4d03-bce0-965a9da343a7",
+        "sources_fetched": 5,
+        "classification": "comparative",
+        "pipeline_duration_seconds": 16.40149235725403,
+        "quality_score": 53,
+        "quality_grade": "F (Poor Quality)"
+      }
+    }
+  ]
+}

@@ -73,27 +73,40 @@ async def chat(request: ChatRequest):
     """
     Main chat endpoint - sends message to orchestrator agent
     """
+    session_id = None
+    actual_session_id = None
+    
     try:
         # Get existing session ID or None (orchestrator will create new session)
         session_id = request.session_id
 
         # Call orchestrator agent directly using the pipeline
         # The orchestrator now handles session creation and message storage
-        print(f"\n[WEB UI] Processing query: {request.message[:100]}...")
+        print(f"\n[WEB UI] ========== NEW REQUEST ==========")
+        print(f"[WEB UI] Processing query: {request.message[:100]}...")
         print(f"[WEB UI] Session ID: {session_id or 'new'}")
 
         # Call the fixed pipeline with session_id (orchestrator handles session persistence)
+        print(f"[WEB UI] Calling execute_fixed_pipeline...")
         result = await execute_fixed_pipeline(
             query=request.message,
             user_id="web_user",
             session_id=session_id
         )
+        print(f"[WEB UI] Pipeline returned: status={result.get('status')}")
 
         # Extract the content and session ID from pipeline result
         if result.get("status") == "success":
             response_text = result.get("content", "")
             actual_session_id = result.get("session_id", session_id)
+
+            # Log quality score if available
+            quality_report = result.get("quality_report")
+            if quality_report:
+                print(f"[WEB UI] Quality Score: {quality_report.get('overall_score')}/100")
+
             print(f"[WEB UI] Pipeline completed successfully")
+            print(f"[WEB UI] Response length: {len(response_text)} characters")
         else:
             response_text = f"Error: {result.get('error', 'Unknown error')}"
             actual_session_id = result.get("session_id", session_id or str(uuid.uuid4()))
@@ -102,23 +115,58 @@ async def chat(request: ChatRequest):
         # Auto-generate session title from first message if this is a new session
         if not session_id and actual_session_id:
             title = request.message[:50] + "..." if len(request.message) > 50 else request.message
-            session_service.update_session_title(actual_session_id, title)
+            print(f"[WEB UI] Updating session title...")
+            try:
+                session_service.update_session_title(actual_session_id, title)
+                print(f"[WEB UI] Session title updated successfully")
+            except Exception as title_error:
+                print(f"[WEB UI] Warning: Could not update session title: {title_error}")
 
         # Get message count for response
-        session_data = session_service.get_session(actual_session_id)
-        message_count = len(session_data.get("messages", []))
+        try:
+            print(f"[WEB UI] Retrieving session data...")
+            session_data = session_service.get_session(actual_session_id)
+            message_count = len(session_data.get("messages", []))
+            print(f"[WEB UI] Session has {message_count} messages")
+        except Exception as session_error:
+            print(f"[WEB UI] Warning: Could not get session data: {session_error}")
+            message_count = 0
 
-        return ChatResponse(
+        print(f"[WEB UI] Creating response object...")
+        print(f"[WEB UI]   - response length: {len(response_text)}")
+        print(f"[WEB UI]   - session_id: {actual_session_id}")
+        print(f"[WEB UI]   - message_id: {message_count}")
+        
+        response_obj = ChatResponse(
             response=response_text,
             session_id=actual_session_id,
             message_id=message_count
         )
+        print(f"[WEB UI] Response object created successfully")
+        print(f"[WEB UI] Returning response to client...")
+        print(f"[WEB UI] ========== REQUEST COMPLETE ==========\n")
+        return response_obj
 
     except Exception as e:
-        print(f"[WEB UI] ERROR: {e}")
+        print(f"\n[WEB UI] ========== ERROR OCCURRED ==========")
+        print(f"[WEB UI] Error Type: {type(e).__name__}")
+        print(f"[WEB UI] Error Message: {e}")
+        print(f"[WEB UI] Session ID when error occurred: {actual_session_id or session_id or 'None'}")
+        print(f"[WEB UI] ========== FULL TRACEBACK ==========")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[WEB UI] =====================================\n")
+
+        # Return detailed error information to help diagnose
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        
+        # Create a user-friendly error message but include details for debugging
+        error_message = f"An error occurred: {type(e).__name__} - {str(e)[:200]}"
+        raise HTTPException(status_code=500, detail=error_message)
 
 
 @app.get("/api/sessions")

@@ -8,6 +8,7 @@ This agent coordinates the research pipeline using a DETERMINISTIC FIXED PIPELIN
 4. ALWAYS calls Information Gatherer to format results
 5. ALWAYS calls Content Analysis agent to assess credibility and extract facts
 6. ALWAYS calls Report Generator agent to create final tailored report
+7. ALWAYS validates output quality with Quality Assurance service
 
 This eliminates the unpredictability of LLM-based tool calling by using
 a fixed sequence of steps executed by Python code.
@@ -45,6 +46,9 @@ from utils.observability import (
 
 # Import persistent session service for conversation history
 from services.persistent_session_service import create_persistent_session_service
+
+# Import Quality Assurance service
+from services.quality_assurance import QualityAssuranceService
 
 # Load environment variables
 env_path = project_root / '.env'
@@ -90,6 +94,10 @@ logger.info("All sub-agents loaded successfully")
 # Initialize persistent session service for conversation history and user memory
 session_service = create_persistent_session_service("orchestrator_sessions")
 logger.info("Persistent session service initialized for conversation history")
+
+# Initialize Quality Assurance service
+qa_service = QualityAssuranceService()
+logger.info("Quality Assurance service initialized for output validation")
 
 # Create A2A tool functions
 async def classify_user_query(query: str, user_id: str = "default") -> dict:
@@ -278,6 +286,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     STEP 4: Format results
     STEP 5: Analyze content credibility and extract facts
     STEP 6: Generate tailored report with citations and follow-up questions
+    STEP 7: Validate output quality (completeness, citations, comparison matrices)
 
     Args:
         query: The user's research query
@@ -318,6 +327,7 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
         # Record pipeline start metric
         metrics.increment_counter("pipeline_start_total", labels={"user_id": user_id})
 
+
     # ============================================================
     # STEP 1: ALWAYS CLASSIFY QUERY
     # ============================================================
@@ -357,7 +367,6 @@ async def execute_fixed_pipeline(query: str, user_id: str = "default", interacti
     # STEP 2: SMART SEARCH STRATEGY (Google Shopping API or Web Search)
     # ============================================================
     print(f"\n[STEP 2/6] Determining search strategy...")
-
     # Check if this is a product price query - use Google Shopping API
     query_type = classification.get('query_type', '').lower()
     is_price_query = 'price' in query_type or 'product' in query_type or \
@@ -699,8 +708,41 @@ Remember: You are the final voice to the user. Transform this data into actionab
             # Fallback to the formatted information from Information Gatherer
             final_report = response_text
 
+        # ============================================================
+        # STEP 7: ALWAYS VALIDATE OUTPUT QUALITY
+        # ============================================================
+        print(f"\n[STEP 7/7] Validating output quality with QA service...")
+
+        try:
+            quality_report = qa_service.validate_output(
+                final_report=final_report,
+                classification=classification,
+                analysis_json=analysis_json,
+                fetched_sources=fetched_data,
+                query=query
+            )
+
+            print(f"[STEP 7/7] OK Quality validation complete")
+            print(f"  Quality Score: {quality_report.overall_score}/100 ({quality_report._get_grade()})")
+            print(f"  Passed: {quality_report.summary['passed']}/{quality_report.summary['total_checks']} checks")
+
+            if quality_report.summary['failed'] > 0:
+                print(f"  [WARN]  Failed: {quality_report.summary['failed']} check(s)")
+            if quality_report.summary['warnings'] > 0:
+                print(f"  [WARN]  Warnings: {quality_report.summary['warnings']} check(s)")
+
+            # Show top recommendations
+            if quality_report.recommendations:
+                print(f"  Top Recommendation: {quality_report.recommendations[0]}")
+
+        except Exception as e:
+            print(f"[STEP 7/7] WARN Quality validation failed: {e}")
+            # Create a minimal quality report
+            quality_report = None
+            logger.warning("QA validation failed", error=str(e))
+
         print(f"\n{'='*60}")
-        print(f"PIPELINE COMPLETE")
+        print(f"PIPELINE COMPLETE - 7/7 STEPS FINISHED")
         print(f"{'='*60}\n")
 
         # Store assistant's response in session
@@ -712,7 +754,9 @@ Remember: You are the final voice to the user. Transform this data into actionab
                 "query_id": query_id,
                 "sources_fetched": len(fetched_data),
                 "classification": classification.get('query_type'),
-                "pipeline_duration_seconds": time.time() - pipeline_start_time
+                "pipeline_duration_seconds": time.time() - pipeline_start_time,
+                "quality_score": quality_report.overall_score if quality_report else None,
+                "quality_grade": quality_report._get_grade() if quality_report else None
             }
         )
         logger.info("Stored assistant response in session", session_id=session_id)
@@ -723,6 +767,7 @@ Remember: You are the final voice to the user. Transform this data into actionab
             "classification": classification,
             "sources_fetched": len(fetched_data),
             "content_analysis": analysis_json,
+            "quality_report": quality_report.to_dict() if quality_report else None,  # Quality validation results
             "session_id": session_id,  # Include session ID for reference
             "intermediate_outputs": {
                 "information_gatherer": response_text,  # Keep for debugging
@@ -733,7 +778,8 @@ Remember: You are the final voice to the user. Transform this data into actionab
                 "fetch": f"OK Fetched {len(fetched_data)} sources",
                 "format": "OK Complete",
                 "analysis": "OK Complete" if fetched_data else "SKIP No data",
-                "report": "OK Complete"
+                "report": "OK Complete",
+                "quality_validation": f"OK Complete (Score: {quality_report.overall_score}/100)" if quality_report else "WARN Failed"
             }
         }
 
@@ -749,6 +795,7 @@ Remember: You are the final voice to the user. Transform this data into actionab
             "classification": classification,
             "fetched_data": fetched_data,
             "sources_fetched": len(fetched_data),
+            "session_id": session_id,
             "pipeline_steps": {
                 "classification": "OK Complete",
                 "search": f"OK Found {len(search_result.get('urls', []))} URLs",
@@ -768,7 +815,7 @@ instruction = """You are the Orchestrator Agent for ResearchMate AI.
 
 You have ONE tool available: execute_fixed_pipeline
 
-⚠️ WHEN TO RUN THE PIPELINE:
+[WARN] WHEN TO RUN THE PIPELINE:
 
 1. **Initial Query**: If the user asks a research question, you can EITHER:
    - Run the pipeline immediately with the query as-is, OR
@@ -811,7 +858,7 @@ The fixed pipeline will AUTOMATICALLY execute all research steps in order:
    - Do NOT try to resume from a previous step
    - The pipeline is stateless - each run is fresh with new search results
 
-3. ⚠️⚠️⚠️ AFTER THE PIPELINE RETURNS - CRITICAL PASS-THROUGH RULE ⚠️⚠️⚠️
+3. [WARN][WARN][WARN] AFTER THE PIPELINE RETURNS - CRITICAL PASS-THROUGH RULE [WARN][WARN][WARN]
 
 When execute_fixed_pipeline returns a result with "content" field:
 
@@ -826,15 +873,15 @@ It ALREADY has:
 - Follow-up Questions section
 
 DO NOT:
-❌ Summarize or paraphrase the content
-❌ Add your own introduction or commentary
-❌ Remove ANY sections (especially "### Sources" or "Follow-up Questions")
-❌ Reformat the markdown structure
-❌ Change headings or organization
-❌ Add your own recommendations or thoughts
-❌ "Improve" or "clean up" the formatting
+[FAIL] Summarize or paraphrase the content
+[FAIL] Add your own introduction or commentary
+[FAIL] Remove ANY sections (especially "### Sources" or "Follow-up Questions")
+[FAIL] Reformat the markdown structure
+[FAIL] Change headings or organization
+[FAIL] Add your own recommendations or thoughts
+[FAIL] "Improve" or "clean up" the formatting
 
-✅ DO: Copy and paste the 'content' field character-for-character
+[OK] DO: Copy and paste the 'content' field character-for-character
 
 If the pipeline returns:
 {
@@ -864,8 +911,8 @@ You output to user: [EXACT content from pipeline - do NOT summarize, do NOT remo
 
 Example 3 - What NOT to do (WRONG):
 Pipeline returns: "...recommendations...\n\n### Sources\n[1] Amazon - https://..."
-❌ WRONG: "Here's what I found: [summarized recommendations]. You might want to check Amazon."
-✅ CORRECT: [Output the exact content including ### Sources section with full URLs]
+[FAIL] WRONG: "Here's what I found: [summarized recommendations]. You might want to check Amazon."
+[OK] CORRECT: [Output the exact content including ### Sources section with full URLs]
 
 ═══════════════════════════════════════════════════════════════════════════
 📤 OUTPUT FORMAT AFTER PIPELINE COMPLETES

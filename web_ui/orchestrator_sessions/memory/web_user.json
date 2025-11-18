@@ -1,0 +1,62 @@
+{
+  "user_id": "web_user",
+  "created_at": "2025-11-18T16:56:39.334212",
+  "preferences": {},
+  "research_history": [
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison"
+        ]
+      },
+      "timestamp": "2025-11-18T16:56:39.334218"
+    },
+    {
+      "key": "Compare Toyota Camry vs Honda Accord 2024",
+      "data": {
+        "query": "Compare Toyota Camry vs Honda Accord 2024",
+        "query_type": "comparative",
+        "topics": [
+          "Toyota Camry",
+          "Honda Accord",
+          "2024 models",
+          "comparison"
+        ]
+      },
+      "timestamp": "2025-11-18T17:06:49.806855"
+    },
+    {
+      "key": "Compare Sony WH-1000XM5 vs Bose QuietComfort 45 - which is better?",
+      "data": {
+        "query": "Compare Sony WH-1000XM5 vs Bose QuietComfort 45 - which is better?",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "Bose QuietComfort 45",
+          "noise cancelling headphones",
+          "comparison"
+        ]
+      },
+      "timestamp": "2025-11-18T17:10:41.982664"
+    },
+    {
+      "key": "What are the best wireless headphones under $250?",
+      "data": {
+        "query": "What are the best wireless headphones under $250?",
+        "query_type": "comparative",
+        "topics": [
+          "wireless headphones",
+          "under $250",
+          "best models"
+        ]
+      },
+      "timestamp": "2025-11-18T17:12:16.742723"
+    }
+  ],
+  "domain_knowledge": {},
+  "updated_at": "2025-11-18T17:12:16.742733"
+}

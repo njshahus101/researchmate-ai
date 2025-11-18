@@ -1,0 +1,36 @@
+{
+  "user_id": "web_user",
+  "created_at": "2025-11-18T16:45:12.900371",
+  "preferences": {},
+  "research_history": [
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison",
+          "retailers"
+        ]
+      },
+      "timestamp": "2025-11-18T16:45:12.900380"
+    },
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison",
+          "retailers",
+          "deals"
+        ]
+      },
+      "timestamp": "2025-11-18T16:51:16.150973"
+    }
+  ],
+  "domain_knowledge": {},
+  "updated_at": "2025-11-18T16:51:16.150990"
+}

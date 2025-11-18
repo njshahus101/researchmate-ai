@@ -1,0 +1,104 @@
+{
+  "user_id": "test_user",
+  "created_at": "2025-11-18T16:36:16.856899",
+  "preferences": {},
+  "research_history": [
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison"
+        ]
+      },
+      "timestamp": "2025-11-18T16:36:16.856905"
+    },
+    {
+      "key": "price",
+      "data": {
+        "query": "price",
+        "query_type": "factual",
+        "topics": [
+          "price"
+        ]
+      },
+      "timestamp": "2025-11-18T16:36:37.257286"
+    },
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison",
+          "retailers"
+        ]
+      },
+      "timestamp": "2025-11-18T16:37:11.668804"
+    },
+    {
+      "key": "price",
+      "data": {
+        "query": "price",
+        "query_type": "factual",
+        "topics": [
+          "price"
+        ]
+      },
+      "timestamp": "2025-11-18T16:37:15.386388"
+    },
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison",
+          "retailers"
+        ]
+      },
+      "timestamp": "2025-11-18T16:37:32.946268"
+    },
+    {
+      "key": "price",
+      "data": {
+        "query": "price",
+        "query_type": "factual",
+        "topics": [
+          "price"
+        ]
+      },
+      "timestamp": "2025-11-18T16:37:48.238233"
+    },
+    {
+      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "data": {
+        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "price comparison",
+          "retailers"
+        ]
+      },
+      "timestamp": "2025-11-18T16:38:19.214831"
+    },
+    {
+      "key": "price",
+      "data": {
+        "query": "price",
+        "query_type": "factual",
+        "topics": [
+          "price"
+        ]
+      },
+      "timestamp": "2025-11-18T16:38:35.630480"
+    }
+  ],
+  "domain_knowledge": {},
+  "updated_at": "2025-11-18T16:38:35.630488"
+}
