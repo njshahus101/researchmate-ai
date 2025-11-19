@@ -65,8 +65,8 @@ async function sendMessage(event) {
         // Remove loading indicator
         hideLoadingIndicator();
 
-        // Add assistant response to UI
-        addMessageToUI('assistant', data.response);
+        // Add assistant response to UI with quality score if available
+        addMessageToUI('assistant', data.response, data.quality_report);
 
     } catch (error) {
         console.error('Error sending message:', error);
@@ -90,7 +90,7 @@ function setQuery(query) {
 // UI Message Handling
 // ============================================================
 
-function addMessageToUI(role, content) {
+function addMessageToUI(role, content, qualityReport = null) {
     const messagesContainer = document.getElementById('chatMessages');
 
     const messageDiv = document.createElement('div');
@@ -99,10 +99,28 @@ function addMessageToUI(role, content) {
     const avatar = role === 'user' ? 'You' : 'AI';
     const avatarInitial = role === 'user' ? 'U' : 'R';
 
+    // Add quality badge if available
+    let qualityBadge = '';
+    if (qualityReport && qualityReport.overall_score !== undefined) {
+        const score = qualityReport.overall_score;
+        const grade = qualityReport.grade;
+        let badgeColor = '#10b981'; // Green for A
+        if (score < 90) badgeColor = '#3b82f6'; // Blue for B
+        if (score < 80) badgeColor = '#f59e0b'; // Orange for C
+        if (score < 70) badgeColor = '#ef4444'; // Red for D/F
+
+        qualityBadge = `
+            <div class="quality-badge" style="background: ${badgeColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;" title="Quality Score: ${score}/100 - ${qualityReport.summary.passed}/${qualityReport.summary.total_checks} checks passed">
+                ${grade} ${score}/100
+            </div>
+        `;
+    }
+
     messageDiv.innerHTML = `
         <div class="message-header">
             <div class="message-avatar">${avatarInitial}</div>
             <div class="message-author">${avatar}</div>
+            ${qualityBadge}
         </div>
         <div class="message-content" id="msg-${Date.now()}"></div>
     `;
@@ -228,7 +246,23 @@ async function loadSession(sessionId) {
 
         // Load messages
         data.messages.forEach(msg => {
-            addMessageToUI(msg.role, msg.content);
+            // Extract quality report from metadata if available (for assistant messages)
+            let qualityReport = null;
+            if (msg.role === 'assistant' && msg.metadata) {
+                const score = msg.metadata.quality_score;
+                const grade = msg.metadata.quality_grade;
+                if (score !== undefined && score !== null) {
+                    qualityReport = {
+                        overall_score: score,
+                        grade: grade || 'N/A',
+                        summary: {
+                            passed: 0,
+                            total_checks: 0
+                        }
+                    };
+                }
+            }
+            addMessageToUI(msg.role, msg.content, qualityReport);
         });
 
         // Update session title

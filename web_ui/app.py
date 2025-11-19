@@ -26,7 +26,10 @@ from google.adk.runners import InMemoryRunner
 from services.persistent_session_service import create_persistent_session_service
 
 # Initialize persistent session service for web UI
-session_service = create_persistent_session_service("web_ui_sessions")
+# IMPORTANT: Use same directory as orchestrator so web UI can see session history
+# Use parent directory's orchestrator_sessions (since web UI runs from web_ui/ subdirectory)
+orchestrator_sessions_path = str(Path(__file__).parent.parent / "orchestrator_sessions")
+session_service = create_persistent_session_service(orchestrator_sessions_path)
 
 # Initialize FastAPI app
 app = FastAPI(title="ResearchMate AI", version="1.0.0")
@@ -52,6 +55,7 @@ class ChatResponse(BaseModel):
     response: str
     session_id: str
     message_id: int
+    quality_report: Optional[dict] = None
 
 
 class SessionCreate(BaseModel):
@@ -140,7 +144,8 @@ async def chat(request: ChatRequest):
         response_obj = ChatResponse(
             response=response_text,
             session_id=actual_session_id,
-            message_id=message_count
+            message_id=message_count,
+            quality_report=result.get("quality_report")
         )
         print(f"[WEB UI] Response object created successfully")
         print(f"[WEB UI] Returning response to client...")
@@ -173,6 +178,9 @@ async def chat(request: ChatRequest):
 async def get_sessions(user_id: str = "web_user"):
     """Get all conversation sessions"""
     sessions = session_service.list_sessions(user_id)
+    # Map session_id to id for frontend compatibility
+    for session in sessions:
+        session["id"] = session["session_id"]
     return {"sessions": sessions}
 
 

@@ -555,7 +555,7 @@ class QualityAssuranceService:
 
         # Check 4: Price normalization
         prices_normalized = all(
-            isinstance(product.get('price', {}).get('value'), (int, float))
+            isinstance((product.get('price') or {}).get('value'), (int, float))
             for product in products
         )
 
@@ -580,8 +580,8 @@ class QualityAssuranceService:
 
         # Check 5: Rating normalization
         ratings_normalized = all(
-            isinstance(product.get('rating', {}).get('value'), (int, float))
-            and product.get('rating', {}).get('scale') == 5
+            isinstance((product.get('rating') or {}).get('value'), (int, float))
+            and (product.get('rating') or {}).get('scale') == 5
             for product in products
         )
 
