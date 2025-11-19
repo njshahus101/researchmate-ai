@@ -92,7 +92,11 @@ from adk_agents.report_generator.agent import agent as report_generator_agent
 logger.info("All sub-agents loaded successfully")
 
 # Initialize persistent session service for conversation history and user memory
-session_service = create_persistent_session_service("orchestrator_sessions")
+# Use absolute path to ensure consistency regardless of working directory
+from pathlib import Path as SessionPath
+orchestrator_base_dir = SessionPath(__file__).resolve().parent.parent.parent
+orchestrator_sessions_dir = str(orchestrator_base_dir / "orchestrator_sessions")
+session_service = create_persistent_session_service(orchestrator_sessions_dir)
 logger.info("Persistent session service initialized for conversation history")
 
 # Initialize Quality Assurance service

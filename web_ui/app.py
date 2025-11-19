@@ -27,8 +27,9 @@ from services.persistent_session_service import create_persistent_session_servic
 
 # Initialize persistent session service for web UI
 # IMPORTANT: Use same directory as orchestrator so web UI can see session history
-# Use parent directory's orchestrator_sessions (since web UI runs from web_ui/ subdirectory)
-orchestrator_sessions_path = str(Path(__file__).parent.parent / "orchestrator_sessions")
+# Use absolute path to parent directory's orchestrator_sessions
+orchestrator_sessions_path = str((Path(__file__).resolve().parent.parent / "orchestrator_sessions"))
+print(f"\n[SESSION SERVICE] Using session storage at: {orchestrator_sessions_path}")
 session_service = create_persistent_session_service(orchestrator_sessions_path)
 
 # Initialize FastAPI app

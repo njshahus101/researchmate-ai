@@ -59,7 +59,6 @@ async function sendMessage(event) {
         // Update current session ID
         if (!currentSessionId) {
             currentSessionId = data.session_id;
-            loadConversations();
         }
 
         // Remove loading indicator
@@ -67,6 +66,9 @@ async function sendMessage(event) {
 
         // Add assistant response to UI with quality score if available
         addMessageToUI('assistant', data.response, data.quality_report);
+
+        // Refresh conversation list to show updated timestamp and current session
+        loadConversations();
 
     } catch (error) {
         console.error('Error sending message:', error);
