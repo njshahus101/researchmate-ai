@@ -78,6 +78,10 @@ docs/_build/
 sample/
 project_description*.md
 
+# Session data (runtime files, not tracked)
+orchestrator_sessions/
+web_ui_sessions/
+
 # Screenshots and images
 *.png
 *.jpg

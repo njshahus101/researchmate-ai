@@ -1,6 +1,6 @@
 {
   "user_id": "web_user",
-  "created_at": "2025-11-18T16:45:12.900371",
+  "created_at": "2025-11-18T16:56:39.334212",
   "preferences": {},
   "research_history": [
     {
@@ -10,27 +10,164 @@
         "query_type": "comparative",
         "topics": [
           "Sony WH-1000XM5",
-          "price comparison",
-          "retailers"
+          "price comparison"
         ]
       },
-      "timestamp": "2025-11-18T16:45:12.900380"
+      "timestamp": "2025-11-18T16:56:39.334218"
     },
     {
-      "key": "Compare prices for Sony WH-1000XM5 headphones",
+      "key": "Compare Toyota Camry vs Honda Accord 2024",
       "data": {
-        "query": "Compare prices for Sony WH-1000XM5 headphones",
+        "query": "Compare Toyota Camry vs Honda Accord 2024",
+        "query_type": "comparative",
+        "topics": [
+          "Toyota Camry",
+          "Honda Accord",
+          "2024 models",
+          "comparison"
+        ]
+      },
+      "timestamp": "2025-11-18T17:06:49.806855"
+    },
+    {
+      "key": "Compare Sony WH-1000XM5 vs Bose QuietComfort 45 - which is better?",
+      "data": {
+        "query": "Compare Sony WH-1000XM5 vs Bose QuietComfort 45 - which is better?",
         "query_type": "comparative",
         "topics": [
           "Sony WH-1000XM5",
-          "price comparison",
-          "retailers",
-          "deals"
+          "Bose QuietComfort 45",
+          "noise cancelling headphones",
+          "comparison"
         ]
       },
-      "timestamp": "2025-11-18T16:51:16.150973"
+      "timestamp": "2025-11-18T17:10:41.982664"
+    },
+    {
+      "key": "What are the best wireless headphones under $250?",
+      "data": {
+        "query": "What are the best wireless headphones under $250?",
+        "query_type": "comparative",
+        "topics": [
+          "wireless headphones",
+          "under $250",
+          "best models"
+        ]
+      },
+      "timestamp": "2025-11-18T17:12:16.742723"
+    },
+    {
+      "key": "Compare Sony WH-1000XM5 vs Bose QuietComfort 45 headphones",
+      "data": {
+        "query": "Compare Sony WH-1000XM5 vs Bose QuietComfort 45 headphones",
+        "query_type": "comparative",
+        "topics": [
+          "Sony WH-1000XM5",
+          "Bose QuietComfort 45",
+          "noise cancelling headphones",
+          "comparison",
+          "features",
+          "price",
+          "performance"
+        ]
+      },
+      "timestamp": "2025-11-18T20:19:24.126538"
+    },
+    {
+      "key": "What are the best wireless headphones under $250?",
+      "data": {
+        "query": "What are the best wireless headphones under $250?",
+        "query_type": "comparative",
+        "topics": [
+          "wireless headphones",
+          "budget audio",
+          "consumer electronics"
+        ]
+      },
+      "timestamp": "2025-11-18T20:26:17.866295"
+    },
+    {
+      "key": "Compare Toyota Camry vs Honda Accord 2024",
+      "data": {
+        "query": "Compare Toyota Camry vs Honda Accord 2024",
+        "query_type": "comparative",
+        "topics": [
+          "Toyota Camry",
+          "Honda Accord",
+          "2024 models",
+          "comparison",
+          "features",
+          "price",
+          "performance",
+          "reliability",
+          "fuel economy"
+        ]
+      },
+      "timestamp": "2025-11-18T20:28:06.544797"
+    },
+    {
+      "key": "Which model is best suited for analyzing security incidents form various source of data?",
+      "data": {
+        "query": "Which model is best suited for analyzing security incidents form various source of data?",
+        "query_type": "comparative",
+        "topics": [
+          "security incident analysis models",
+          "data sources",
+          "SIEM",
+          "SOAR",
+          "AI in cybersecurity",
+          "machine learning for security"
+        ]
+      },
+      "timestamp": "2025-11-18T20:48:26.058334"
+    },
+    {
+      "key": "I meant which AI Models such as OpenAI or Geminai are more suited",
+      "data": {
+        "query": "I meant which AI Models such as OpenAI or Geminai are more suited",
+        "query_type": "comparative",
+        "topics": [
+          "AI models",
+          "OpenAI",
+          "Gemini",
+          "model capabilities",
+          "use cases",
+          "performance comparison"
+        ]
+      },
+      "timestamp": "2025-11-18T20:50:28.230756"
+    },
+    {
+      "key": "compare TCO of running a VM with 16GB memory, a GPU and 250GB hard drive on Azure, AWS and GCP",
+      "data": {
+        "query": "compare TCO of running a VM with 16GB memory, a GPU and 250GB hard drive on Azure, AWS and GCP",
+        "query_type": "comparative",
+        "topics": [
+          "Total Cost of Ownership (TCO)",
+          "Virtual Machines (VMs)",
+          "Azure",
+          "AWS",
+          "GCP",
+          "16GB memory",
+          "GPU",
+          "250GB hard drive"
+        ]
+      },
+      "timestamp": "2025-11-18T20:52:08.365321"
+    },
+    {
+      "key": "What's the federal poverty line income in 2024/",
+      "data": {
+        "query": "What's the federal poverty line income in 2024/",
+        "query_type": "factual",
+        "topics": [
+          "federal poverty line income",
+          "2024"
+        ]
+      },
+      "timestamp": "2025-11-18T20:56:02.045727"
     }
   ],
   "domain_knowledge": {},
-  "updated_at": "2025-11-18T16:51:16.150990"
+  "updated_at": "2025-11-18T20:56:02.045736"
 }
