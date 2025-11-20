@@ -70,6 +70,26 @@ cp .env.example .env
 # Edit .env and add your GOOGLE_API_KEY
 ```
 
+5. **(Optional) Enable Product Comparison with SERPAPI:**
+
+For queries like **"Best wireless headphones under $200"**, ResearchMate AI can fetch multi-source pricing from Google Shopping (Amazon, Walmart, Best Buy, Target, etc.) using SerpAPI.
+
+**Benefits:**
+- 95%+ success rate (no bot detection like direct scraping)
+- Multi-source prices in single API call (1-2 seconds)
+- Normalized data format with ratings and reviews
+- Free tier: 100 searches/month
+
+**Setup:**
+```bash
+# Add to your .env file:
+SERPAPI_KEY=your_serpapi_key_here
+```
+
+**Get your key:** Sign up at [https://serpapi.com/](https://serpapi.com/)
+
+**Note:** Without SERPAPI_KEY, the system falls back to regular web search (still works, but no aggregated pricing data).
+
 ## Quick Start
 
 ### Option 1: Web UI (Recommended - Easiest!)
