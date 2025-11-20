@@ -56,11 +56,8 @@ source venv/bin/activate
 ### Step 3: Install Dependencies
 
 ```bash
-# Install all dependencies
+# Install all dependencies (includes Web UI dependencies)
 pip install -r requirements.txt
-
-# Install web UI dependencies
-pip install -r web_ui/requirements.txt
 ```
 
 **Main Dependencies:**
