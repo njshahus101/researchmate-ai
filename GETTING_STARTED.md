@@ -237,6 +237,30 @@ How do I get started with astrophotography?
 
 ## Troubleshooting
 
+### Issue: Unicode/Emoji Display Error on Windows
+
+**Symptoms:**
+- Error: `UnicodeEncodeError: 'charmap' codec can't encode character`
+- Application crashes when displaying emoji characters
+
+**Solution:**
+This has been fixed in the latest version of `main.py`. If you're still experiencing issues:
+
+**Option 1 (Recommended):** Update to the latest version
+```bash
+git pull origin main
+```
+
+**Option 2:** Set UTF-8 encoding in PowerShell before running:
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+python main.py
+```
+
+**Option 3:** Use Windows Terminal (Windows 11) or update your console:
+- Windows Terminal has native UTF-8 support
+- Download from Microsoft Store
+
 ### Issue: "GOOGLE_API_KEY not found"
 
 **Solution:**

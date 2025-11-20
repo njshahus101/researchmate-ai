@@ -13,6 +13,14 @@ from datetime import datetime
 from pathlib import Path
 import sys
 from dotenv import load_dotenv
+
+# Set UTF-8 encoding for Windows console compatibility
+if sys.platform == 'win32':
+    import io
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 from google.adk.runners import InMemoryRunner
 from google.adk.apps.app import App
 from google.adk.agents import LlmAgent

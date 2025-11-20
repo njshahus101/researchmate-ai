@@ -41,15 +41,30 @@ ResearchMate AI uses a sophisticated multi-agent architecture to:
 
 1. Clone the repository:
 ```bash
+git clone https://github.com/njshahus101/researchmate-ai.git
 cd researchmate-ai
 ```
 
-2. Install dependencies:
+2. Create and activate virtual environment:
+
+**Windows:**
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+**macOS/Linux:**
+```bash
+python -m venv venv
+source venv/bin/activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set up environment variables:
+4. Set up environment variables:
 ```bash
 cp .env.example .env
 # Edit .env and add your GOOGLE_API_KEY
