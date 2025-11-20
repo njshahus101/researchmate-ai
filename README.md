@@ -125,6 +125,54 @@ researchmate-ai/
 **Input**: "What about battery life on those headphones?"
 **Output**: Updated comparison matrix (15 seconds)
 
+## Quality Assurance System
+
+ResearchMate AI includes a comprehensive quality assurance framework that validates every research report and provides an overall quality score (0-100) with letter grades (A/B/C/D/F).
+
+### How Quality Scores Are Calculated
+
+The overall quality score reflects **confidence in the research response** based on four weighted categories:
+
+| Category | Weight | What It Measures |
+|----------|--------|------------------|
+| **Source Quality** | **35%** | Citation-weighted credibility - measures which sources the report actually relies on |
+| **Citations** | 25% | Proper citation format, matching sources, no hallucinations |
+| **Completeness** | 20% | Required sections present, content length, markdown structure |
+| **Comparison** | 20% | Comparison matrix quality (for comparative queries only) |
+
+### Citation-Weighted Credibility (Key Innovation)
+
+Unlike traditional systems that just check if high-quality sources exist, ResearchMate AI measures **which sources are actually used** in the report:
+
+**How It Works:**
+1. Content Analyzer assigns credibility scores (0-100) to each source
+2. Report Generator is guided to prioritize high-credibility sources for main claims
+3. Quality Assurance counts how many times each source [1], [2], [3] is cited in the report body
+4. Weighted credibility = Σ(citation_frequency × credibility_score)
+
+**Example Scenario:**
+- Sources: [1] Nature (90 cred), [2] Science (85 cred), [3] Reddit (50 cred)
+- Report cites [1] 10×, [2] 5×, [3] 2×
+- **Weighted credibility: 82/100** ✓ High confidence (86% citations from high-cred sources)
+
+If the same report cited [3] 15× and [1] + [2] only 2×:
+- **Weighted credibility: 55/100** ⚠️ Low confidence (88% citations from low-cred sources)
+- **Overall quality drops to B grade**, signaling to users to treat findings with more caution
+
+### Source Credibility Levels
+
+- **High Credibility (80-100)**: Academic journals, government sites, established news outlets
+- **Medium Credibility (60-79)**: Industry blogs, review sites, established forums
+- **Low Credibility (<60)**: Anonymous forums, unverified user posts, promotional content
+
+### Quality Grades
+
+- **A (90-100)**: Excellent - High confidence, comprehensive, well-cited
+- **B (80-89)**: Good - Solid research with minor areas for improvement
+- **C (70-79)**: Acceptable - Meets basic standards but needs improvement
+- **D (60-69)**: Needs Improvement - Missing key elements or low source quality
+- **F (<60)**: Poor Quality - Significant issues that undermine reliability
+
 ## Development
 
 ### Running Tests
@@ -145,7 +193,7 @@ This project demonstrates:
 - MCP Tool Architecture
 - Memory and State Management
 - Observability and Logging
-- Quality Assurance
+- Citation-Weighted Quality Assurance (measures actual source usage, not just availability)
 
 ## License
 

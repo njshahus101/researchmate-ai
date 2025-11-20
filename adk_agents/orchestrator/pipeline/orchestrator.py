@@ -16,6 +16,8 @@ from .steps import (
     format_results_step,
     analyze_content_step,
     generate_report_step,
+    format_citations,
+    validate_and_clean_citations,
     quality_check_step,
 )
 
@@ -38,6 +40,7 @@ async def execute_fixed_pipeline(
     STEP 4: Format results
     STEP 5: Analyze content credibility and extract facts
     STEP 6: Generate tailored report with citations and follow-up questions
+    STEP 6.5: Post-process citations (enforce proper format and numbering)
     STEP 7: Validate output quality (completeness, citations, comparison matrices)
 
     Args:
@@ -130,8 +133,30 @@ async def execute_fixed_pipeline(
             query,
             classification,
             response_text,
-            analysis_json
+            analysis_json,
+            fetched_data  # Pass fetched_data for fallback source construction
         )
+
+        # ============================================================
+        # STEP 6.5: POST-PROCESS CITATIONS
+        # ============================================================
+        print(f"\n[STEP 6.5/7] Post-processing citations for quality assurance...")
+
+        # Get source credibility for citation formatting
+        source_credibility = analysis_json.get('source_credibility', [])
+
+        # Clean any invalid citations first
+        if source_credibility:
+            final_report = validate_and_clean_citations(final_report, len(source_credibility))
+
+        # Format citations to ensure proper structure
+        final_report = format_citations(
+            final_report,
+            source_credibility,
+            fetched_data
+        )
+
+        print(f"[STEP 6.5/7] OK Citation post-processing complete")
 
         # ============================================================
         # STEP 7: VALIDATE OUTPUT QUALITY

@@ -143,7 +143,7 @@ class QualityAssuranceService:
 
         # Category 4: Source Quality Validation
         source_quality_results = self._validate_source_quality(
-            analysis_json, fetched_sources
+            final_report, analysis_json, fetched_sources
         )
         validation_results.extend(source_quality_results)
 
@@ -205,8 +205,8 @@ class QualityAssuranceService:
                 details={"length": content_length, "threshold": self.thresholds["min_content_length"]}
             ))
 
-        # Check 2: Sources section present
-        has_sources_section = bool(re.search(r'#+\s*Sources?', report, re.IGNORECASE))
+        # Check 2: Sources section present (handle emoji)
+        has_sources_section = bool(re.search(r'#+\s*(?:📚\s*)?Sources?', report, re.IGNORECASE))
         if has_sources_section:
             results.append(ValidationResult(
                 category="Completeness",
@@ -439,8 +439,8 @@ class QualityAssuranceService:
 
     def _extract_sources_section(self, report: str) -> str:
         """Extract the Sources section from report"""
-        # Find Sources heading
-        match = re.search(r'#+\s*Sources?\s*\n(.*?)(?=\n#+|\n\*\*Follow-up|$)', report, re.IGNORECASE | re.DOTALL)
+        # Find Sources heading (allow emojis and other characters before/after "Sources")
+        match = re.search(r'#+\s*(?:📚\s*)?Sources?\s*\n(.*?)(?=\n#+|💡|$)', report, re.IGNORECASE | re.DOTALL)
         if match:
             return match.group(1)
         return ""
@@ -635,6 +635,7 @@ class QualityAssuranceService:
 
     def _validate_source_quality(
         self,
+        report: str,
         analysis_json: Dict,
         fetched_sources: List[Dict]
     ) -> List[ValidationResult]:
@@ -644,8 +645,8 @@ class QualityAssuranceService:
         Checks:
         1. Minimum number of sources analyzed
         2. Credibility scores assigned
-        3. High-credibility sources present
-        4. No low-credibility sources relied upon
+        3. Citation-weighted credibility (measures actual source usage)
+        4. Average credibility score
         """
         results = []
 
@@ -711,36 +712,80 @@ class QualityAssuranceService:
                     details={"coverage": 100, "scored_count": total_sources, "note": "Fallback scoring applied"}
                 ))
 
-        # Check 3: High-credibility sources present
+        # Check 3: Citation-weighted credibility (measures which sources are actually used)
         if source_credibility:
-            high_cred_sources = [
-                s for s in source_credibility
-                if s.get('credibility_score', 0) >= 80
-            ]
-            credible_sources = analysis_summary.get('credible_sources', len(high_cred_sources))
+            # Extract citations from the report body (exclude Sources section)
+            report_body = self._extract_report_body(report)
+            citation_counts = self._count_citations(report_body)
 
-            if credible_sources > 0:
+            # Calculate weighted credibility based on actual citation usage
+            total_citations = sum(citation_counts.values())
+
+            if total_citations > 0:
+                weighted_credibility = 0
+                high_cred_citations = 0
+                low_cred_citations = 0
+
+                for i, source_info in enumerate(source_credibility, start=1):
+                    citation_num = str(i)
+                    citation_freq = citation_counts.get(citation_num, 0)
+                    credibility_score = source_info.get('credibility_score', 70)
+
+                    # Weight each source's credibility by how often it's cited
+                    weighted_credibility += (citation_freq / total_citations) * credibility_score
+
+                    # Track high and low credibility citation usage
+                    if credibility_score >= 80:
+                        high_cred_citations += citation_freq
+                    elif credibility_score < 60:
+                        low_cred_citations += citation_freq
+
+                high_cred_ratio = (high_cred_citations / total_citations) if total_citations > 0 else 0
+                low_cred_ratio = (low_cred_citations / total_citations) if total_citations > 0 else 0
+
+                # Score based on weighted credibility
+                if weighted_credibility >= 75:
+                    cred_level = ValidationLevel.PASS
+                    cred_score = int(weighted_credibility)
+                    cred_msg = f"Weighted credibility: {weighted_credibility:.0f}/100 based on citation usage ({high_cred_citations}/{total_citations} citations from high-cred sources)"
+                elif weighted_credibility >= 60:
+                    cred_level = ValidationLevel.PASS
+                    cred_score = int(weighted_credibility)
+                    cred_msg = f"Weighted credibility: {weighted_credibility:.0f}/100 - Acceptable mix ({high_cred_citations}/{total_citations} from high-cred)"
+                else:
+                    cred_level = ValidationLevel.WARNING
+                    cred_score = int(weighted_credibility)
+                    cred_msg = f"Weighted credibility: {weighted_credibility:.0f}/100 - Heavy reliance on lower-credibility sources ({low_cred_citations}/{total_citations} from low-cred)"
+
                 results.append(ValidationResult(
                     category="Source Quality",
-                    check_name="High-Credibility Sources",
-                    level=ValidationLevel.PASS,
-                    score=100,
-                    message=f"{credible_sources} high-credibility source(s) present (score >=80)",
+                    check_name="Citation-Weighted Credibility",
+                    level=cred_level,
+                    score=cred_score,
+                    message=cred_msg,
                     details={
-                        "high_cred_count": credible_sources,
-                        "total_sources": len(source_credibility)
+                        "weighted_credibility": weighted_credibility,
+                        "total_citations": total_citations,
+                        "high_cred_citations": high_cred_citations,
+                        "low_cred_citations": low_cred_citations,
+                        "high_cred_ratio": high_cred_ratio,
+                        "low_cred_ratio": low_cred_ratio,
+                        "citation_counts": citation_counts
                     }
                 ))
             else:
+                # Fallback to simple count if no citations found in body
+                high_cred_sources = [s for s in source_credibility if s.get('credibility_score', 0) >= 80]
                 results.append(ValidationResult(
                     category="Source Quality",
-                    check_name="High-Credibility Sources",
+                    check_name="Citation-Weighted Credibility",
                     level=ValidationLevel.WARNING,
                     score=50,
-                    message="No high-credibility sources (score >=80) found",
+                    message=f"No in-text citations found for weighting - {len(high_cred_sources)}/{len(source_credibility)} sources are high-credibility",
                     details={
-                        "high_cred_count": 0,
-                        "total_sources": len(source_credibility)
+                        "high_cred_count": len(high_cred_sources),
+                        "total_sources": len(source_credibility),
+                        "note": "Citation weighting unavailable"
                     }
                 ))
 
@@ -807,10 +852,10 @@ class QualityAssuranceService:
         Calculate overall quality score (0-100) from validation results.
 
         Weights by category importance:
-        - Citations: 30% (critical for transparency)
-        - Completeness: 25% (critical for usefulness)
-        - Comparison: 25% (if applicable, critical for decision-making)
-        - Source Quality: 20% (important for reliability)
+        - Source Quality: 35% (MOST critical - reflects confidence in response based on citation-weighted credibility)
+        - Citations: 25% (critical for transparency)
+        - Completeness: 20% (important for usefulness)
+        - Comparison: 20% (if applicable, important for decision-making)
         """
         if not validation_results:
             return 0
@@ -830,10 +875,10 @@ class QualityAssuranceService:
 
         # Apply weights based on category importance
         weights = {
-            "Citations": 0.30,
-            "Completeness": 0.25,
-            "Comparison": 0.25,
-            "Source Quality": 0.20
+            "Source Quality": 0.35,  # Highest weight - citation-weighted credibility drives confidence
+            "Citations": 0.25,
+            "Completeness": 0.20,
+            "Comparison": 0.20
         }
 
         # Calculate weighted score
@@ -925,14 +970,46 @@ class QualityAssuranceService:
                 recommendations.append("[WARN] Add visual comparison table for better clarity")
             elif warning.check_name == "Data Completeness":
                 recommendations.append("[WARN] Fill in missing product data fields (price, rating, features)")
-            elif warning.check_name == "High-Credibility Sources":
-                recommendations.append("[WARN] Consider adding more high-credibility sources (score >= 80)")
+            elif warning.check_name == "Citation-Weighted Credibility":
+                recommendations.append("[WARN] Rely more heavily on high-credibility sources for main claims")
 
         # If no specific issues, provide general guidance
         if not recommendations:
             recommendations.append("[PASS] No specific improvements needed. Quality is excellent!")
 
         return recommendations
+
+    # =========================================================================
+    # HELPER METHODS
+    # =========================================================================
+
+    def _extract_report_body(self, report: str) -> str:
+        """
+        Extract the main report body, excluding the Sources section.
+        This allows us to count only in-text citations, not the source list itself.
+        """
+        # Find the Sources section and extract everything before it
+        sources_match = re.search(r'#+\s*(?:📚\s*)?Sources?', report, re.MULTILINE | re.IGNORECASE)
+        if sources_match:
+            return report[:sources_match.start()]
+        return report  # If no Sources section found, use entire report
+
+    def _count_citations(self, report_body: str) -> Dict[str, int]:
+        """
+        Count how many times each source [1], [2], [3], etc. is cited in the report body.
+
+        Returns:
+            Dictionary mapping citation number to count, e.g., {'1': 5, '2': 3, '3': 1}
+        """
+        # Find all [N] patterns where N is a number
+        citations = re.findall(r'\[(\d+)\]', report_body)
+
+        # Count occurrences of each citation
+        citation_counts = {}
+        for citation in citations:
+            citation_counts[citation] = citation_counts.get(citation, 0) + 1
+
+        return citation_counts
 
 
 # Convenience function for quick validation
