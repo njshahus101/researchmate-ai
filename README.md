@@ -72,10 +72,32 @@ cp .env.example .env
 
 ## Quick Start
 
+### Option 1: Web UI (Recommended - Easiest!)
+
+**Windows:**
+```bash
+# Simply double-click: start_web_ui.bat
+# Or run:
+cd web_ui
+python app.py
+```
+
+**macOS/Linux:**
+```bash
+cd web_ui
+python app.py
+```
+
+Then open your browser to **http://localhost:8080**
+
+### Option 2: Command Line Interface
+
 ```bash
 # Run the main application
 python main.py
 ```
+
+**See [WEB_UI_QUICKSTART.md](WEB_UI_QUICKSTART.md) for detailed Web UI instructions**
 
 ## Project Structure
 
